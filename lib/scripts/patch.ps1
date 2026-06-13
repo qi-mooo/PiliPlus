@@ -3,10 +3,6 @@ param(
 )
 
 # TODO: remove
-# https://github.com/flutter/flutter/issues/182468
-$ToolTipFix = "56956c33ef102ac0b5fc46b62bd2dd9f50a86616";
-
-# TODO: remove
 # https://github.com/flutter/flutter/issues/182281
 $NewOverScrollIndicator = "362b1de29974ffc1ed6faa826e1df870d7bec75f";
 
@@ -16,11 +12,22 @@ $BottomSheetAndroidPatch = "lib/scripts/bottom_sheet_android.patch"
 $BottomSheetIOSFlutterPatch = "lib/scripts/bottom_sheet_ios_flutter.patch"
 $BottomSheetIOSPiliPlusPatch = "lib/scripts/bottom_sheet_ios_piliplus.patch"
 
+# https://github.com/bggRGjQaUbCoE/PiliPlus/issues/1662
 $ScrollViewPatch = "lib/scripts/scroll_view.patch"
 
+# https://github.com/bggRGjQaUbCoE/PiliPlus/issues/2106
 $TextSelectionPatch = "lib/scripts/text_selection.patch"
 
+# https://github.com/bggRGjQaUbCoE/PiliPlus/issues/1947
 $NavigatorPatch = "lib/scripts/navigator.patch"
+
+# https://github.com/bggRGjQaUbCoE/PiliPlus/issues/2107
+$ImageAnimPatch = "lib/scripts/image_anim.patch"
+
+$LayoutBuilderPatch = "lib/scripts/layout_builder.patch"
+
+# https://github.com/bggRGjQaUbCoE/PiliPlus/issues/2308
+$NavigationDrawerPatch = "lib/scripts/navigation_drawer.patch"
 
 # TODO: remove
 # https://github.com/flutter/flutter/issues/90223
@@ -30,10 +37,16 @@ $ModalBarrierPatch = "lib/scripts/modal_barrier.patch"
 # https://github.com/flutter/flutter/issues/182466
 $MouseCursorPatch = "lib/scripts/mouse_cursor.patch"
 
+$GeetestIOSPatch = "lib/scripts/geetest_ios.patch"
+
 if ($platform.ToLower() -eq "ios") {
     git apply $BottomSheetIOSPiliPlusPatch
     if ($LASTEXITCODE -eq 0) {
         Write-Host "$BottomSheetIOSPiliPlusPatch applied"
+    }
+    git apply $GeetestIOSPatch
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "$GeetestIOSPatch applied"
     }
 }
 
@@ -41,7 +54,8 @@ Set-Location $env:FLUTTER_ROOT
 
 $picks   = @()
 $reverts = @()
-$patches = @($ModalBarrierPatch, $TextSelectionPatch, $MouseCursorPatch)
+$patches = @($ModalBarrierPatch, $TextSelectionPatch, $MouseCursorPatch,
+            $ImageAnimPatch, $LayoutBuilderPatch, $NavigationDrawerPatch)
 
 switch ($platform.ToLower()) {
     "android" {
@@ -56,13 +70,10 @@ switch ($platform.ToLower()) {
         $patches += $NavigatorPatch
     }
     "linux" {
-        $picks += $ToolTipFix
     }
     "macos" {
-        $picks += $ToolTipFix
     }
     "windows" {
-        $picks += $ToolTipFix
     }
     default {}
 }
@@ -97,11 +108,4 @@ foreach ($patch in $patches) {
     if ($LASTEXITCODE -eq 0) {
         Write-Host "$patch applied"
     }
-}
-
-# TODO: remove
-if ($platform.ToLower() -eq "android") {
-    "69e31205362b4e59b7eb89b24797e687b4b67afe" | Set-Content -Path .\bin\internal\engine.version
-    Remove-Item -Path ".\bin\cache" -Recurse -Force
-    flutter --version
 }

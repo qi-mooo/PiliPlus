@@ -10,7 +10,6 @@ import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/setting/slide_color_picker.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
-import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:canvas_danmaku/models/danmaku_content_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
@@ -24,7 +23,6 @@ class SendDanmakuPanel extends CommonTextPubPage {
   final dynamic progress;
 
   final ValueChanged<DanmakuContentItem<DanmakuExtra>> onSuccess;
-  final bool darkVideoPage;
 
   // config
   final ({int? mode, int? fontSize, Color? color})? dmConfig;
@@ -38,7 +36,6 @@ class SendDanmakuPanel extends CommonTextPubPage {
     this.bvid,
     this.progress,
     required this.onSuccess,
-    required this.darkVideoPage,
     this.dmConfig,
     this.onSaveDmConfig,
   });
@@ -138,14 +135,14 @@ class _SendDanmakuPanelState extends CommonTextPubPageState<SendDanmakuPanel> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    themeData = widget.darkVideoPage ? ThemeUtils.darkTheme : Theme.of(context);
+    themeData = Theme.of(context);
   }
 
   late ThemeData themeData;
 
   @override
   Widget build(BuildContext context) {
-    Widget child = ViewSafeArea(
+    return ViewSafeArea(
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Container(
@@ -164,7 +161,6 @@ class _SendDanmakuPanelState extends CommonTextPubPageState<SendDanmakuPanel> {
         ),
       ),
     );
-    return widget.darkVideoPage ? Theme(data: themeData, child: child) : child;
   }
 
   @override
@@ -419,7 +415,7 @@ class _SendDanmakuPanelState extends CommonTextPubPageState<SendDanmakuPanel> {
               iconColor: enablePublish.value
                   ? themeData.colorScheme.primary
                   : themeData.colorScheme.outline,
-              onPressed: enablePublish.value ? onPublish : null,
+              onPressed: enablePublish.value ? onPublishThrottle : null,
               icon: const Icon(Icons.send),
             ),
           ),
@@ -428,9 +424,8 @@ class _SendDanmakuPanelState extends CommonTextPubPageState<SendDanmakuPanel> {
     );
   }
 
-  Future<void> _showColorPicker() async {
-    controller.keepChatPanel();
-    await showDialog(
+  void _showColorPicker() {
+    showDialog(
       context: context,
       builder: (context) => AlertDialog(
         clipBehavior: Clip.hardEdge,
@@ -446,7 +441,6 @@ class _SendDanmakuPanelState extends CommonTextPubPageState<SendDanmakuPanel> {
         ),
       ),
     );
-    controller.restoreChatPanel();
   }
 
   @override

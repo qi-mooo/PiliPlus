@@ -81,7 +81,6 @@ jobs:
             - name: Apply Patch
               shell: pwsh
               run: lib/scripts/patch.ps1 android
-              continue-on-error: true
 
             - name: Write key
               if: github.event_name == 'workflow_dispatch'
@@ -106,7 +105,7 @@ jobs:
             - name: Flutter Build Dev Apk
               if: ${{ github.event_name == 'pull_request' }}
               run: |
-                flutter build apk --release --split-per-abi --android-project-arg dev=1 --pub
+                  flutter build apk --release --split-per-abi --android-project-arg dev=1 --pub
 
             - name: Rename
               run: |

@@ -475,19 +475,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _pickImg(ThemeData theme) async {
     try {
-      XFile? pickedFile = await _imagePicker.pickImage(
+      final pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 100,
+        requestFullMetadata: false,
       );
       if (pickedFile != null && mounted) {
-        String? mimeType = lookupMimeType(
-          pickedFile.path,
-        )?.split('/').elementAtOrNull(1);
+        String? imagePath = pickedFile.path;
+        String? mimeType = (pickedFile.mimeType ?? lookupMimeType(imagePath))
+            ?.split('/')
+            .elementAtOrNull(1);
         if (mimeType == 'gif') {
           SmartDialog.showToast('不能选GIF');
           return;
         }
-        String? imagePath = pickedFile.path;
         if (PlatformUtils.isMobile) {
           final croppedFile = await ImageCropper.platform.cropImage(
             sourcePath: imagePath,

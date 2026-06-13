@@ -46,7 +46,7 @@ import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/url_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
@@ -915,16 +915,16 @@ class ReplyItemGrpc extends StatelessWidget {
       },
     );
 
-    if (urlKeys.isNotEmpty) {
-      List<String> unmatchedItems = urlKeys
-          .where((url) => !matchedUrls.contains(url))
-          .toList();
-      if (unmatchedItems.isNotEmpty) {
-        for (final patternStr in unmatchedItems) {
-          addUrl(patternStr, content.urls[patternStr]!);
-        }
-      }
-    }
+    // if (urlKeys.isNotEmpty) {
+    //   List<String> unmatchedItems = urlKeys
+    //       .where((url) => !matchedUrls.contains(url))
+    //       .toList();
+    //   if (unmatchedItems.isNotEmpty) {
+    //     for (final patternStr in unmatchedItems) {
+    //       addUrl(patternStr, content.urls[patternStr]!);
+    //     }
+    //   }
+    // }
 
     if (!hasNote && replyControl.isNote && replyControl.isNoteV2) {
       final Color color;

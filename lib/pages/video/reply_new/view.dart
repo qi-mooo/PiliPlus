@@ -210,7 +210,7 @@ class _ReplyPageState extends CommonRichTextPubPageState<ReplyPage> {
             const Spacer(),
             Obx(
               () => FilledButton.tonal(
-                onPressed: enablePublish.value ? onPublish : null,
+                onPressed: enablePublish.value ? onPublishThrottle : null,
                 style: FilledButton.styleFrom(
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   padding: const EdgeInsets.symmetric(
@@ -290,7 +290,6 @@ class _ReplyPageState extends CommonRichTextPubPageState<ReplyPage> {
         children: [
           item(
             onTap: () async {
-              controller.keepChatPanel();
               final ({String title, String url})? res = await Get.to(
                 ReplySearchPage(type: widget.replyType, oid: widget.oid),
               );
@@ -301,7 +300,6 @@ class _ReplyPageState extends CommonRichTextPubPageState<ReplyPage> {
                   rawText: '${res.url} ',
                 );
               }
-              controller.restoreChatPanel();
             },
             icon: Icon(Icons.post_add, size: 28, color: color),
             title: '插入内容',
@@ -352,12 +350,16 @@ class _ReplyPageState extends CommonRichTextPubPageState<ReplyPage> {
                     final res = await plPlayerController
                         .plPlayerController
                         .videoPlayerController
-                        ?.screenshot(format: .png);
+                        ?.screenshot();
                     if (res != null) {
-                      final path =
-                          '$tmpDirPath/${Utils.generateRandomString(8)}.png';
-                      await File(path).writeAsBytes(res);
-                      imageList.add(FilePicModel(path: path));
+                      final png = await res.toByteData(format: .png);
+                      if (png != null) {
+                        final path =
+                            '$tmpDirPath/${Utils.generateRandomString(8)}.png';
+                        await File(path).writeAsBytes(png.buffer.asUint8List());
+                        imageList.add(FilePicModel(path: path));
+                      }
+                      res.dispose();
                     } else {
                       debugPrint('null screenshot');
                     }
