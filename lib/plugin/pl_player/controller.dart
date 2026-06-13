@@ -608,10 +608,7 @@ class PlPlayerController with BlockConfigMixin {
       .._playerCount += 1;
   }
 
-  static const _normalVideoBufferSize = 4 * 1024 * 1024;
-  static const _normalLiveBufferSize = 16 * 1024 * 1024;
   static const _expandedVideoBufferSize = 32 * 1024 * 1024;
-  static const _expandedLiveBufferSize = 64 * 1024 * 1024;
   static const _iosHighLoadRateThreshold = 2.5;
 
   bool _processing = false;
@@ -659,16 +656,6 @@ class PlPlayerController with BlockConfigMixin {
     return numerator / denominator;
   }
 
-  int get _bufferSize {
-    if (Pref.expandBuffer) {
-      return isLive ? _expandedLiveBufferSize : _expandedVideoBufferSize;
-    }
-    if (_isIosHighLoadVideo) {
-      return _expandedVideoBufferSize;
-    }
-    return isLive ? _normalLiveBufferSize : _normalVideoBufferSize;
-  }
-
   bool _iosHighLoadRateMode = false;
   String? _iosHighLoadFramedrop;
   String? _iosHighLoadVideoSync;
@@ -691,12 +678,6 @@ class PlPlayerController with BlockConfigMixin {
     try {
       player.setProperty(property, value);
     } catch (_) {}
-  }
-
-  void _applyBufferSize(NativePlayer player) {
-    final value = _bufferSize.toString();
-    _setPlayerProperty(player, 'demuxer-max-bytes', value);
-    _setPlayerProperty(player, 'demuxer-max-back-bytes', value);
   }
 
   void _applyIosHighLoadRateMode(NativePlayer player, double speed) {
@@ -909,7 +890,6 @@ class PlPlayerController with BlockConfigMixin {
     }
     final player = await Player.create(
       configuration: PlayerConfiguration(
-        bufferSize: _bufferSize,
         logLevel: kDebugMode ? .warn : .error,
         options: opt,
       ),
@@ -936,6 +916,18 @@ class PlPlayerController with BlockConfigMixin {
   Map<String, String>? _buffer;
   Map<String, String> get buffer =>
       _buffer ??= Pref.initBuffer(_playbackSpeed.value);
+  Map<String, String> get videoBuffer {
+    if (!_isIosHighLoadVideo) {
+      return buffer;
+    }
+    final value = _expandedVideoBufferSize.toString();
+    return {
+      ...buffer,
+      'demuxer-max-bytes': value,
+      'demuxer-max-back-bytes': value,
+    };
+  }
+
   Map<String, String>? _liveBuffer;
   Map<String, String> get liveBuffer => _liveBuffer ??= Pref.initLiveBuffer();
 
@@ -977,7 +969,7 @@ class PlPlayerController with BlockConfigMixin {
       if (isLive) {
         extras.addAll(liveBuffer);
       } else {
-        extras.addAll(buffer);
+        extras.addAll(videoBuffer);
       }
     }
 
@@ -1020,7 +1012,6 @@ class PlPlayerController with BlockConfigMixin {
       video,
       if (!onlyPlayAudio.value) ?dataSource.audioSource,
     ]);
-    _applyBufferSize(player);
     _applyIosHighLoadRateMode(player, playbackSpeed);
 
     await player.open(

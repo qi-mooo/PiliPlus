@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' show min;
 import 'dart:ui';
 
@@ -793,7 +794,7 @@ class VideoDetailController extends GetxController
       width: firstVideo.width,
       height: firstVideo.height,
       frameRate: firstVideo.frameRate,
-      volume: volume ?? this.volume,
+      volume: volume,
       autoFullScreenFlag: autoFullScreenFlag,
     );
 

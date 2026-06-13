@@ -36,8 +36,21 @@ jobs:
 
       - name: Build iOS
         run: |
-          flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json
-          ln -sf ./build/ios/iphoneos Payload
+          flutter build ios --config-only --release --no-codesign --dart-define-from-file=pili_release.json
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          rm -rf Payload
+          mkdir -p Payload
+          ditto build/ios/Build/Products/Release-iphoneos/Runner.app Payload/Runner.app
           # make AltSign happy...
           find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
           zip -r9 PiliPlus_ios_${{env.version}}.ipa Payload/Runner.app
