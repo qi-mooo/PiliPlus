@@ -164,6 +164,12 @@ List<SettingsModel> get playSettings => [
     defaultVal: true,
   ),
   NormalModel(
+    title: '快捷键绑定',
+    subtitle: '设置播放器键盘快捷键',
+    leading: const Icon(Icons.keyboard_command_key_outlined),
+    onTap: (_, _) => Get.toNamed('/playerShortcutSetting'),
+  ),
+  NormalModel(
     title: 'SuperChat (醒目留言) 显示类型',
     leading: const Icon(Icons.live_tv),
     getSubtitle: () => '当前:「${Pref.superChatType.title}」',

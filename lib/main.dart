@@ -9,7 +9,12 @@ import 'package:PiliPlus/common/widgets/scale_app.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
 import 'package:PiliPlus/http/app_dns.dart';
 import 'package:PiliPlus/http/init.dart';
+import 'package:PiliPlus/models/common/nav_bar_config.dart';
+import 'package:PiliPlus/models/common/player_shortcut.dart';
 import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
+import 'package:PiliPlus/pages/home/controller.dart';
+import 'package:PiliPlus/pages/main/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
@@ -115,6 +120,7 @@ void main() async {
     ..lazyPut(DownloadService.new);
   HttpOverrides.global = _CustomHttpOverrides();
 
+  FocusManager.instance.addEarlyKeyEventHandler(_onKeyEvent);
   if (PlatformUtils.isMobile) {
     if (Platform.isAndroid) MaxScreenSize.init();
     await Future.wait([
@@ -166,8 +172,6 @@ void main() async {
       ScreenBrightnessPlatform.instance.setAutoReset(false);
     }
   } else if (PlatformUtils.isDesktop) {
-    FocusManager.instance.addEarlyKeyEventHandler(_onKeyEvent);
-
     await windowManager.ensureInitialized();
 
     final windowOptions = WindowOptions(
@@ -218,9 +222,39 @@ void main() async {
 }
 
 KeyEventResult _onKeyEvent(KeyEvent event) {
-  if (event.logicalKey == .escape && event is KeyDownEvent) {
-    _onBack();
-    return .handled;
+  if (event is! KeyDownEvent) return .ignored;
+  if (PlayerShortcutConfig.actionFor(event, includeGlobal: false) != null) {
+    if (PlPlayerController.instance case final player?) {
+      if (player.isFullScreen.value || player.isDesktopPip) return .ignored;
+    }
+  }
+  final action = PlayerShortcutConfig.actionFor(event, onlyGlobal: true);
+  switch (action) {
+    case PlayerShortcutAction.back:
+      _onBack();
+      return .handled;
+    case PlayerShortcutAction.homeRefresh:
+      if (!_hasEditableFocus && _refreshHome()) return .handled;
+    case PlayerShortcutAction.search:
+      if (!_hasEditableFocus) {
+        Get.toNamed('/search');
+        return .handled;
+      }
+    case PlayerShortcutAction.home:
+      return _setMainIndex(NavigationBarType.home);
+    case PlayerShortcutAction.dynamics:
+      return _setMainIndex(NavigationBarType.dynamics);
+    case PlayerShortcutAction.mine:
+      return _setMainIndex(NavigationBarType.mine);
+    case PlayerShortcutAction.currentTopOrRefresh:
+      if (!_hasEditableFocus && Get.isRegistered<MainController>()) {
+        final mainController = Get.find<MainController>();
+        mainController.setIndex(mainController.selectedIndex.value);
+        return .handled;
+      }
+    case null:
+    case _:
+      return .ignored;
   }
   return .ignored;
 }
@@ -229,6 +263,12 @@ void _onBack() {
   if (SmartDialog.checkExist()) {
     SmartDialog.dismiss();
     return;
+  }
+  if (PlPlayerController.instance case final player?) {
+    if (player.isFullScreen.value) {
+      player.triggerFullScreen(status: false);
+      return;
+    }
   }
 
   final route = Get.routing.route;
@@ -243,6 +283,46 @@ void _onBack() {
   if (navigator.canPop()) {
     navigator.pop();
   }
+}
+
+bool _refreshHome() {
+  if (!Get.isRegistered<MainController>() ||
+      !Get.isRegistered<HomeController>()) {
+    return false;
+  }
+  final mainController = Get.find<MainController>();
+  final homeIndex = mainController.navigationBars.indexOf(
+    NavigationBarType.home,
+  );
+  if (homeIndex == -1) return false;
+  if (mainController.selectedIndex.value != homeIndex) {
+    mainController.setIndex(homeIndex);
+  }
+  Get.find<HomeController>()
+    ..animateToTop()
+    ..onRefresh();
+  return true;
+}
+
+KeyEventResult _setMainIndex(NavigationBarType type) {
+  if (!Get.isRegistered<MainController>()) return .ignored;
+  final mainController = Get.find<MainController>();
+  final index = mainController.navigationBars.indexOf(type);
+  if (index == -1) {
+    if (type == NavigationBarType.mine) {
+      mainController.toMinePage();
+      return .handled;
+    }
+    return .ignored;
+  }
+  mainController.setIndex(index);
+  return .handled;
+}
+
+bool get _hasEditableFocus {
+  final context = FocusManager.instance.primaryFocus?.context;
+  return context != null &&
+      context.findAncestorWidgetOfExactType<EditableText>() != null;
 }
 
 class MyApp extends StatelessWidget {

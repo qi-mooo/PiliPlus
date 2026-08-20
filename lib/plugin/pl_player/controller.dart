@@ -571,7 +571,6 @@ class PlPlayerController with BlockConfigMixin {
   }
 
   static const _expandedVideoBufferSize = 32 * 1024 * 1024;
-  static const _iosHighLoadRateThreshold = 2.5;
 
   bool _processing = false;
   bool get processing => _processing;
@@ -620,7 +619,6 @@ class PlPlayerController with BlockConfigMixin {
 
   bool _iosHighLoadRateMode = false;
   String? _iosHighLoadFramedrop;
-  String? _iosHighLoadVideoSync;
   String? _iosHighLoadInterpolation;
 
   String? _getPlayerProperty(NativePlayer player, String property) {
@@ -642,35 +640,23 @@ class PlPlayerController with BlockConfigMixin {
     } catch (_) {}
   }
 
-  void _applyIosHighLoadRateMode(NativePlayer player, double speed) {
-    final enable =
-        _isIosHighLoadVideo &&
-        !onlyPlayAudio.value &&
-        speed >= _iosHighLoadRateThreshold;
+  void _applyIosHighLoadRateMode(NativePlayer player, bool enable) {
     if (_iosHighLoadRateMode == enable) {
       return;
     }
     if (enable) {
       _iosHighLoadFramedrop ??= _getPlayerProperty(player, 'framedrop');
-      _iosHighLoadVideoSync ??= _getPlayerProperty(player, 'video-sync');
       _iosHighLoadInterpolation ??= _getPlayerProperty(player, 'interpolation');
-      _setPlayerProperty(player, 'framedrop', 'decoder+vo');
-      _setPlayerProperty(player, 'video-sync', 'audio');
+      _setPlayerProperty(player, 'framedrop', 'vo');
       _setPlayerProperty(player, 'interpolation', 'no');
     } else {
       _setPlayerProperty(player, 'framedrop', _iosHighLoadFramedrop ?? 'vo');
-      _setPlayerProperty(
-        player,
-        'video-sync',
-        _iosHighLoadVideoSync ?? Pref.videoSync,
-      );
       _setPlayerProperty(
         player,
         'interpolation',
         _iosHighLoadInterpolation ?? 'no',
       );
       _iosHighLoadFramedrop = null;
-      _iosHighLoadVideoSync = null;
       _iosHighLoadInterpolation = null;
     }
     _iosHighLoadRateMode = enable;
@@ -974,7 +960,7 @@ class PlPlayerController with BlockConfigMixin {
       video,
       if (!onlyPlayAudio.value) ?dataSource.audioSource,
     ]);
-    _applyIosHighLoadRateMode(player, playbackSpeed);
+    _applyIosHighLoadRateMode(player, false);
 
     await player.open(
       Media(
@@ -1233,8 +1219,8 @@ class PlPlayerController with BlockConfigMixin {
       return;
     }
 
-    if (player != null) {
-      _applyIosHighLoadRateMode(player, speed);
+    if (player != null && !longPressStatus.value) {
+      _applyIosHighLoadRateMode(player, false);
     }
     await player?.setRate(speed);
     _playbackSpeed.value = speed;
@@ -1401,6 +1387,12 @@ class PlPlayerController with BlockConfigMixin {
       if (playerStatus.isPlaying) {
         longPressStatus.value = val;
         HapticFeedback.lightImpact();
+        if (_videoPlayerController case final player?) {
+          _applyIosHighLoadRateMode(
+            player,
+            _isIosHighLoadVideo && !onlyPlayAudio.value,
+          );
+        }
         await setPlaybackSpeed(
           enableAutoLongPressSpeed ? playbackSpeed * 2 : longPressSpeed,
         );
@@ -1408,6 +1400,9 @@ class PlPlayerController with BlockConfigMixin {
     } else {
       // if (kDebugMode) debugPrint('$playbackSpeed');
       longPressStatus.value = val;
+      if (_videoPlayerController case final player?) {
+        _applyIosHighLoadRateMode(player, false);
+      }
       await setPlaybackSpeed(lastPlaybackSpeed);
     }
   }

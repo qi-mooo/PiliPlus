@@ -1,3 +1,5 @@
+import 'package:PiliPlus/pages/login/geetest/geetest_plugin.dart';
+
 import 'dart:convert' show base64, jsonDecode, jsonEncode, utf8;
 import 'dart:io' show Platform;
 
@@ -22,6 +24,7 @@ class GeetestWebviewDialog extends StatefulWidget {
   State<GeetestWebviewDialog> createState() => _GeetestWebviewDialogState();
 
   static Future geetest(String gt, String challenge) {
+    return GeetestPlugin.geetest(gt, challenge);
     return showDialog(
       context: Get.context!,
       builder: (context) => GeetestWebviewDialog(gt, challenge),

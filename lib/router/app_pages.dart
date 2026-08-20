@@ -58,6 +58,7 @@ import 'package:PiliPlus/pages/setting/pages/display_mode.dart';
 import 'package:PiliPlus/pages/setting/pages/font_size_select.dart';
 import 'package:PiliPlus/pages/setting/pages/logs.dart';
 import 'package:PiliPlus/pages/setting/pages/play_speed_set.dart';
+import 'package:PiliPlus/pages/setting/pages/player_shortcut_setting.dart';
 import 'package:PiliPlus/pages/setting/view.dart';
 import 'package:PiliPlus/pages/settings_search/view.dart';
 import 'package:PiliPlus/pages/space_setting/view.dart';
@@ -119,6 +120,10 @@ class Routes {
 
     // 历史记录搜索
     GetPage(name: '/playSpeedSet', page: () => const PlaySpeedPage()),
+    GetPage(
+      name: '/playerShortcutSetting',
+      page: () => const PlayerShortcutSettingPage(),
+    ),
     // 收藏搜索
     GetPage(name: '/favSearch', page: () => const FavSearchPage()),
     GetPage(name: '/historySearch', page: () => const HistorySearchPage()),

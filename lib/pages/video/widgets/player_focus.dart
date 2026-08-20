@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show exit, Platform;
 import 'dart:math' as math;
 
+import 'package:PiliPlus/models/common/player_shortcut.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
@@ -9,7 +10,12 @@ import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:flutter/services.dart'
-    show KeyDownEvent, KeyUpEvent, LogicalKeyboardKey, HardwareKeyboard;
+    show
+        HardwareKeyboard,
+        KeyDownEvent,
+        KeyEvent,
+        KeyUpEvent,
+        LogicalKeyboardKey;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -34,21 +40,17 @@ class PlayerFocus extends StatelessWidget {
   final ValueGetter<bool>? onSkipSegment;
   final VoidCallback? onRefresh;
 
-  static bool _shouldHandle(LogicalKeyboardKey logicalKey) {
-    return logicalKey == LogicalKeyboardKey.tab ||
-        logicalKey == LogicalKeyboardKey.arrowLeft ||
-        logicalKey == LogicalKeyboardKey.arrowRight ||
-        logicalKey == LogicalKeyboardKey.arrowUp ||
-        logicalKey == LogicalKeyboardKey.arrowDown;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Focus(
       autofocus: true,
       onKeyEvent: (node, event) {
         final handled = _handleKey(event);
-        if (handled || _shouldHandle(event.logicalKey)) {
+        if (handled ||
+            PlayerShortcutConfig.shouldHandle(
+              event.logicalKey,
+              includeGlobal: false,
+            )) {
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
@@ -86,41 +88,72 @@ class PlayerFocus extends StatelessWidget {
     }
   }
 
+  void _setAdjacentSpeed({required bool isIncrease}) {
+    final speeds = plPlayerController.speedList.toSet().toList()..sort();
+    final current = plPlayerController.playbackSpeed;
+    final speed = isIncrease
+        ? speeds.firstWhere((item) => item > current, orElse: () => speeds.last)
+        : speeds.lastWhere(
+            (item) => item < current,
+            orElse: () => speeds.first,
+          );
+    if (speed != current) {
+      plPlayerController.setPlaybackSpeed(speed);
+      SmartDialog.showToast('${speed}x播放');
+    }
+  }
+
   bool _handleKey(KeyEvent event) {
     final key = event.logicalKey;
 
-    final isKeyQ = key == LogicalKeyboardKey.keyQ;
-    if (isKeyQ || key == LogicalKeyboardKey.keyR) {
-      if (HardwareKeyboard.instance.isMetaPressed) {
-        if (isKeyQ && Platform.isMacOS) {
+    if (HardwareKeyboard.instance.isMetaPressed) {
+      if (key == LogicalKeyboardKey.keyQ ||
+          key == LogicalKeyboardKey.keyR ||
+          key == LogicalKeyboardKey.keyW) {
+        if (key == LogicalKeyboardKey.keyQ && Platform.isMacOS) {
           exit(0);
         }
         return true;
       }
-      if (event is KeyDownEvent) {
-        if (plPlayerController.isLive) {
-          onRefresh?.call();
-        } else {
-          introController!.onStartTriple();
+    }
+
+    final action = PlayerShortcutConfig.actionFor(event, includeGlobal: false);
+    if (action == null) {
+      return false;
+    }
+    if (event is KeyDownEvent &&
+        action != PlayerShortcutAction.like &&
+        action != PlayerShortcutAction.triple &&
+        (introController?.isTripling ?? false)) {
+      introController!.onCancelTriple();
+    }
+
+    switch (action) {
+      case PlayerShortcutAction.like:
+      case PlayerShortcutAction.triple:
+        if (event is KeyDownEvent) {
+          if (plPlayerController.isLive) {
+            onRefresh?.call();
+          } else {
+            introController?.onStartTriple();
+          }
+        } else if (event is KeyUpEvent && !plPlayerController.isLive) {
+          introController?.onCancelTriple(action == PlayerShortcutAction.like);
         }
-      } else if (event is KeyUpEvent && !plPlayerController.isLive) {
-        introController!.onCancelTriple(isKeyQ);
-      }
-      return true;
-    } else if (event is KeyDownEvent) {
-      if (introController?.isTripling ?? false) {
-        introController!.onCancelTriple();
-      }
-    }
+        return true;
 
-    final isArrowUp = key == LogicalKeyboardKey.arrowUp;
-    if (isArrowUp || key == LogicalKeyboardKey.arrowDown) {
-      _updateVolume(event, isIncrease: isArrowUp);
-      return true;
-    }
+      case PlayerShortcutAction.volumeUp:
+      case PlayerShortcutAction.volumeDown:
+        _updateVolume(
+          event,
+          isIncrease: action == PlayerShortcutAction.volumeUp,
+        );
+        return true;
 
-    if (key == LogicalKeyboardKey.arrowRight) {
-      if (!plPlayerController.isLive) {
+      case PlayerShortcutAction.seekForward:
+        if (plPlayerController.isLive) {
+          return true;
+        }
         if (event is KeyDownEvent) {
           if (hasPlayer && !plPlayerController.longPressStatus.value) {
             plPlayerController
@@ -144,33 +177,49 @@ class PlayerFocus extends StatelessWidget {
             }
           }
         }
-      }
-      return true;
-    }
+        return true;
 
-    if (event is KeyDownEvent) {
-      final isDigit1 = key == LogicalKeyboardKey.digit1;
-      if (isDigit1 || key == LogicalKeyboardKey.digit2) {
-        if (HardwareKeyboard.instance.isShiftPressed && hasPlayer) {
-          final speed = isDigit1 ? 1.0 : 2.0;
+      case PlayerShortcutAction.seekBackward:
+        if (!plPlayerController.isLive && event is KeyDownEvent && hasPlayer) {
+          plPlayerController.onBackward(
+            plPlayerController.fastForBackwardDuration,
+          );
+        }
+        return true;
+
+      case PlayerShortcutAction.normalSpeed:
+      case PlayerShortcutAction.doubleSpeed:
+        if (event is KeyDownEvent && hasPlayer) {
+          final speed = action == PlayerShortcutAction.normalSpeed ? 1.0 : 2.0;
           if (speed != plPlayerController.playbackSpeed) {
             plPlayerController.setPlaybackSpeed(speed);
           }
           SmartDialog.showToast('${speed}x播放');
         }
         return true;
-      }
 
-      switch (key) {
-        case LogicalKeyboardKey.space:
-          if (plPlayerController.isLive || canPlay!()) {
-            if (hasPlayer) {
-              plPlayerController.onDoubleTapCenter();
-            }
-          }
-          return true;
+      case PlayerShortcutAction.speedDown:
+      case PlayerShortcutAction.speedUp:
+        if (event is KeyDownEvent && hasPlayer) {
+          _setAdjacentSpeed(isIncrease: action == PlayerShortcutAction.speedUp);
+        }
+        return true;
 
-        case LogicalKeyboardKey.keyF:
+      case PlayerShortcutAction.toggleControls:
+        if (event is KeyDownEvent) {
+          plPlayerController.controls = !plPlayerController.showControls.value;
+        }
+        return true;
+      case PlayerShortcutAction.playPause:
+        if (event is KeyDownEvent &&
+            (plPlayerController.isLive || canPlay?.call() == true) &&
+            hasPlayer) {
+          plPlayerController.onDoubleTapCenter();
+        }
+        return true;
+
+      case PlayerShortcutAction.fullscreen:
+        if (event is KeyDownEvent) {
           final isFullScreen = this.isFullScreen;
           if (isFullScreen && plPlayerController.controlsLock.value) {
             plPlayerController
@@ -181,9 +230,11 @@ class PlayerFocus extends StatelessWidget {
             status: !isFullScreen,
             inAppFullScreen: HardwareKeyboard.instance.isShiftPressed,
           );
-          return true;
+        }
+        return true;
 
-        case LogicalKeyboardKey.keyD:
+      case PlayerShortcutAction.danmaku:
+        if (event is KeyDownEvent) {
           final newVal = !plPlayerController.enableShowDanmakuAdaptive.value;
           plPlayerController.enableShowDanmakuAdaptive.value = newVal;
           if (!plPlayerController.tempPlayerConf) {
@@ -194,100 +245,110 @@ class PlayerFocus extends StatelessWidget {
               newVal,
             );
           }
-          return true;
+        }
+        return true;
 
-        case LogicalKeyboardKey.keyP:
-          if (PlatformUtils.isDesktop && hasPlayer && !isFullScreen) {
-            plPlayerController
-              ..toggleDesktopPip()
-              ..controlsLock.value = false
-              ..showControls.value = false;
-          }
-          return true;
+      case PlayerShortcutAction.desktopPip:
+        if (event is KeyDownEvent &&
+            PlatformUtils.isDesktop &&
+            hasPlayer &&
+            !isFullScreen) {
+          plPlayerController
+            ..toggleDesktopPip()
+            ..controlsLock.value = false
+            ..showControls.value = false;
+        }
+        return true;
 
-        case LogicalKeyboardKey.keyM:
-          if (hasPlayer) {
-            final isMuted = !plPlayerController.isMuted;
-            plPlayerController.videoPlayerController!.setVolume(
-              isMuted ? 0 : plPlayerController.volume.value * 100,
-            );
-            plPlayerController.isMuted = isMuted;
-            SmartDialog.showToast('${isMuted ? '' : '取消'}静音');
-          }
-          return true;
+      case PlayerShortcutAction.mute:
+        if (event is KeyDownEvent && hasPlayer) {
+          final isMuted = !plPlayerController.isMuted;
+          plPlayerController.videoPlayerController!.setVolume(
+            isMuted ? 0 : plPlayerController.volume.value * 100,
+          );
+          plPlayerController.isMuted = isMuted;
+          SmartDialog.showToast('${isMuted ? '' : '取消'}静音');
+        }
+        return true;
 
-        case LogicalKeyboardKey.keyS:
-          if (hasPlayer && isFullScreen) {
-            plPlayerController.takeScreenshot();
-          }
-          return true;
+      case PlayerShortcutAction.screenshot:
+        if (event is KeyDownEvent && hasPlayer && isFullScreen) {
+          plPlayerController.takeScreenshot();
+        }
+        return true;
 
-        case LogicalKeyboardKey.keyL:
-          if (isFullScreen || plPlayerController.isDesktopPip) {
-            plPlayerController.onLockControl(
-              !plPlayerController.controlsLock.value,
-            );
-          }
-          return true;
+      case PlayerShortcutAction.lockControl:
+        if (event is KeyDownEvent &&
+            (isFullScreen || plPlayerController.isDesktopPip)) {
+          plPlayerController.onLockControl(
+            !plPlayerController.controlsLock.value,
+          );
+        }
+        return true;
 
-        case LogicalKeyboardKey.enter:
+      case PlayerShortcutAction.sendDanmaku:
+        if (event is KeyDownEvent) {
           if (onSkipSegment?.call() ?? false) {
             return true;
           }
           onSendDanmaku();
-          return true;
-      }
-
-      if (!plPlayerController.isLive) {
-        switch (key) {
-          case LogicalKeyboardKey.arrowLeft:
-            if (hasPlayer) {
-              plPlayerController.onBackward(
-                plPlayerController.fastForBackwardDuration,
-              );
-            }
-            return true;
-
-          case LogicalKeyboardKey.keyW:
-            if (HardwareKeyboard.instance.isMetaPressed) {
-              return true;
-            }
-            introController?.actionCoinVideo();
-            return true;
-
-          case LogicalKeyboardKey.keyE:
-            introController?.actionFavVideo(isQuick: true);
-            return true;
-
-          case LogicalKeyboardKey.keyT || LogicalKeyboardKey.keyV:
-            introController?.viewLater();
-            return true;
-
-          case LogicalKeyboardKey.keyG:
-            if (introController case final UgcIntroController ugcCtr) {
-              ugcCtr.actionRelationMod(Get.context!);
-            }
-            return true;
-
-          case LogicalKeyboardKey.bracketLeft:
-            if (introController case final introController?) {
-              if (!introController.prevPlay()) {
-                SmartDialog.showToast('已经是第一集了');
-              }
-            }
-            return true;
-
-          case LogicalKeyboardKey.bracketRight:
-            if (introController case final introController?) {
-              if (!introController.nextPlay()) {
-                SmartDialog.showToast('已经是最后一集了');
-              }
-            }
-            return true;
         }
-      }
-    }
+        return true;
 
-    return false;
+      case PlayerShortcutAction.coin:
+        if (!plPlayerController.isLive && event is KeyDownEvent) {
+          introController?.actionCoinVideo();
+        }
+        return true;
+
+      case PlayerShortcutAction.favorite:
+        if (!plPlayerController.isLive && event is KeyDownEvent) {
+          introController?.actionFavVideo(isQuick: true);
+        }
+        return true;
+
+      case PlayerShortcutAction.viewLater:
+        if (!plPlayerController.isLive && event is KeyDownEvent) {
+          introController?.viewLater();
+        }
+        return true;
+
+      case PlayerShortcutAction.follow:
+        if (!plPlayerController.isLive && event is KeyDownEvent) {
+          if (introController case final UgcIntroController ugcCtr) {
+            ugcCtr.actionRelationMod(Get.context!);
+          }
+        }
+        return true;
+
+      case PlayerShortcutAction.previousEpisode:
+        if (!plPlayerController.isLive && event is KeyDownEvent) {
+          if (introController case final introController?) {
+            if (!introController.prevPlay()) {
+              SmartDialog.showToast('已经是第一集了');
+            }
+          }
+        }
+        return true;
+
+      case PlayerShortcutAction.nextEpisode:
+        if (!plPlayerController.isLive && event is KeyDownEvent) {
+          if (introController case final introController?) {
+            if (!introController.nextPlay()) {
+              SmartDialog.showToast('已经是最后一集了');
+            }
+          }
+        }
+        return true;
+
+      case PlayerShortcutAction.back:
+      case PlayerShortcutAction.search:
+      case PlayerShortcutAction.home:
+      case PlayerShortcutAction.dynamics:
+      case PlayerShortcutAction.mine:
+      case PlayerShortcutAction.homeRefresh:
+      case PlayerShortcutAction.currentTopOrRefresh:
+        return false;
+    }
   }
 }

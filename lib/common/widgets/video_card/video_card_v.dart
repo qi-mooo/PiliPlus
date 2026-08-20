@@ -23,14 +23,18 @@ import 'package:material_ui/material_ui.dart';
 class VideoCardV extends StatelessWidget {
   final BaseRcmdVideoItemModel videoItem;
   final VoidCallback? onRemove;
+  final bool selected;
 
   const VideoCardV({
     super.key,
     required this.videoItem,
     this.onRemove,
+    this.selected = false,
   });
 
-  Future<void> onPushDetail() async {
+  Future<void> onPushDetail() => pushDetail(videoItem);
+
+  static Future<void> pushDetail(BaseRcmdVideoItemModel videoItem) async {
     switch (videoItem.goto) {
       case 'bangumi':
         PageUtils.viewPgc(epId: videoItem.param!);
@@ -133,6 +137,20 @@ class VideoCardV extends StatelessWidget {
             ),
           ),
         ),
+        if (selected)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
+                  borderRadius: Style.mdRadius,
+                ),
+              ),
+            ),
+          ),
         if (videoItem.goto == 'av')
           Positioned(
             right: -5,
