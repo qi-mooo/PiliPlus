@@ -67,7 +67,6 @@ abstract final class SettingBoxKey {
       enableWordRe = 'enableWordRe',
       enableSearchWord = 'enableSearchWord',
       enableSystemProxy = 'enableSystemProxy',
-      enableAppDns = 'enableAppDns',
       enableAi = 'enableAi',
       disableLikeMsg = 'disableLikeMsg',
       defaultHomePage = 'defaultHomePage',
@@ -211,8 +210,7 @@ abstract final class SettingBoxKey {
       danmakuFontWeight = 'fontWeight';
 
   static const String systemProxyHost = 'systemProxyHost',
-      systemProxyPort = 'systemProxyPort',
-      appDnsServers = 'appDnsServers';
+      systemProxyPort = 'systemProxyPort';
 
   static const String themeMode = 'themeMode',
       defaultTextScale = 'textScale',

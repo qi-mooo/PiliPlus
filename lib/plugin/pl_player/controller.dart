@@ -5,7 +5,6 @@ import 'dart:math' show max, min;
 import 'dart:ui' as ui;
 
 import 'package:PiliPlus/common/assets.dart';
-import 'package:PiliPlus/http/app_dns_native_resolver.dart';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -956,10 +955,6 @@ class PlPlayerController with BlockConfigMixin {
       }
     }
 
-    await AppDnsNativeResolver.prepareUrls([
-      video,
-      if (!onlyPlayAudio.value) ?dataSource.audioSource,
-    ]);
     _applyIosHighLoadRateMode(player, false);
 
     await player.open(

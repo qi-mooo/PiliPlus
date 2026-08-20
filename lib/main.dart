@@ -7,7 +7,6 @@ import 'package:PiliPlus/common/widgets/custom_toast.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
 import 'package:PiliPlus/common/widgets/scale_app.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
-import 'package:PiliPlus/http/app_dns.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
 import 'package:PiliPlus/models/common/player_shortcut.dart';
@@ -482,16 +481,6 @@ class _CustomHttpOverrides extends HttpOverrides {
     final acceptBadCertificate = kDebugMode || Pref.badCertificateCallback;
     if (acceptBadCertificate) {
       client.badCertificateCallback = (cert, host, port) => true;
-    }
-    if (Pref.enableAppDns) {
-      client.connectionFactory = (uri, proxyHost, proxyPort) =>
-          AppDns.connectionTask(
-            uri,
-            proxyHost,
-            proxyPort,
-            context: context,
-            acceptBadCertificate: acceptBadCertificate,
-          );
     }
     return client;
   }

@@ -13,7 +13,6 @@ import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pb.dart'
         ListOrder,
         DashItem,
         ResponseUrl;
-import 'package:PiliPlus/http/app_dns_native_resolver.dart';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -317,7 +316,6 @@ class AudioController extends GetxController
     String? referer,
   }) async {
     await _initPlayerIfNeeded();
-    await AppDnsNativeResolver.prepareUrls([url]);
     player
       ?..setMediaHeader(
         userAgent: ua,
