@@ -247,7 +247,6 @@ class _ShortcutCaptureDialogState extends State<_ShortcutCaptureDialog> {
     }
     final binding = PlayerShortcutBinding.fromEvent(event);
     if (binding.isModifierKey) {
-      SmartDialog.showToast('请同时按下非修饰键');
       return;
     }
     setState(() => _binding = binding);
