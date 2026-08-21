@@ -264,7 +264,6 @@ class _ShortcutCaptureDialogState extends State<_ShortcutCaptureDialog> {
     final binding = PlayerShortcutBinding.fromEvent(event);
     if (binding.isModifierKey) {
       _updateModifierState(event.logicalKey, true);
-      SmartDialog.showToast('请同时按下非修饰键');
       return;
     }
     final keyboard = HardwareKeyboard.instance;
