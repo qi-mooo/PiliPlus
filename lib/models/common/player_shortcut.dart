@@ -39,8 +39,7 @@ enum PlayerShortcutAction {
     'currentTopOrRefresh',
     '当前页置顶/刷新',
     Icons.vertical_align_top_outlined,
-  )
-  ;
+  );
 
   const PlayerShortcutAction(this.id, this.title, this.icon);
 
@@ -265,6 +264,8 @@ class PlayerShortcutBinding {
 }
 
 abstract final class PlayerShortcutConfig {
+  static bool isCapturingBinding = false;
+
   static List<PlayerShortcutBinding> bindingsOf(PlayerShortcutAction action) {
     final raw = _storedMap[action.id];
     if (raw is List) {

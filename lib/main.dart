@@ -221,6 +221,7 @@ void main() async {
 }
 
 KeyEventResult _onKeyEvent(KeyEvent event) {
+  if (PlayerShortcutConfig.isCapturingBinding) return .ignored;
   if (event is! KeyDownEvent) return .ignored;
   if (PlayerShortcutConfig.actionFor(event, includeGlobal: false) != null) {
     if (PlPlayerController.instance case final player?) {

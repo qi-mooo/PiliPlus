@@ -1,6 +1,12 @@
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/models/common/player_shortcut.dart';
-import 'package:flutter/services.dart' show KeyDownEvent, KeyEvent;
+import 'package:flutter/services.dart'
+    show
+        HardwareKeyboard,
+        KeyDownEvent,
+        KeyEvent,
+        KeyUpEvent,
+        LogicalKeyboardKey;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -180,10 +186,15 @@ class _ShortcutCaptureDialog extends StatefulWidget {
 class _ShortcutCaptureDialogState extends State<_ShortcutCaptureDialog> {
   final FocusNode _focusNode = FocusNode();
   PlayerShortcutBinding? _binding;
+  bool _shiftPressed = false;
+  bool _controlPressed = false;
+  bool _altPressed = false;
+  bool _metaPressed = false;
 
   @override
   void initState() {
     super.initState();
+    PlayerShortcutConfig.isCapturingBinding = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _focusNode.requestFocus();
@@ -193,6 +204,7 @@ class _ShortcutCaptureDialogState extends State<_ShortcutCaptureDialog> {
 
   @override
   void dispose() {
+    PlayerShortcutConfig.isCapturingBinding = false;
     _focusNode.dispose();
     super.dispose();
   }
@@ -242,13 +254,48 @@ class _ShortcutCaptureDialogState extends State<_ShortcutCaptureDialog> {
   }
 
   void _onKeyEvent(KeyEvent event) {
+    if (event is KeyUpEvent) {
+      _updateModifierState(event.logicalKey, false);
+      return;
+    }
     if (event is! KeyDownEvent) {
       return;
     }
     final binding = PlayerShortcutBinding.fromEvent(event);
     if (binding.isModifierKey) {
+      _updateModifierState(event.logicalKey, true);
+      SmartDialog.showToast('请同时按下非修饰键');
       return;
     }
-    setState(() => _binding = binding);
+    final keyboard = HardwareKeyboard.instance;
+    setState(() {
+      _binding = PlayerShortcutBinding(
+        event.logicalKey.keyId,
+        shift: keyboard.isShiftPressed || _shiftPressed,
+        control: keyboard.isControlPressed || _controlPressed,
+        alt: keyboard.isAltPressed || _altPressed,
+        meta: keyboard.isMetaPressed || _metaPressed,
+      );
+    });
+  }
+
+  void _updateModifierState(LogicalKeyboardKey key, bool pressed) {
+    if (key == LogicalKeyboardKey.shift ||
+        key == LogicalKeyboardKey.shiftLeft ||
+        key == LogicalKeyboardKey.shiftRight) {
+      _shiftPressed = pressed;
+    } else if (key == LogicalKeyboardKey.control ||
+        key == LogicalKeyboardKey.controlLeft ||
+        key == LogicalKeyboardKey.controlRight) {
+      _controlPressed = pressed;
+    } else if (key == LogicalKeyboardKey.alt ||
+        key == LogicalKeyboardKey.altLeft ||
+        key == LogicalKeyboardKey.altRight) {
+      _altPressed = pressed;
+    } else if (key == LogicalKeyboardKey.meta ||
+        key == LogicalKeyboardKey.metaLeft ||
+        key == LogicalKeyboardKey.metaRight) {
+      _metaPressed = pressed;
+    }
   }
 }
