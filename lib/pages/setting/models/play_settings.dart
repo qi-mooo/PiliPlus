@@ -24,6 +24,12 @@ import 'package:material_design_icons_flutter/material_design_icons_flutter.dart
 import 'package:material_ui/material_ui.dart';
 
 List<SettingsModel> get playSettings => [
+  NormalModel(
+    title: '局域网推送',
+    subtitle: '接收其他 PiliPlus 的视频，或打开播放遥控器',
+    leading: const Icon(Icons.connected_tv),
+    onTap: (_, _) => Get.toNamed('/lanCast'),
+  ),
   const SwitchModel(
     title: '弹幕开关',
     subtitle: '是否展示弹幕',

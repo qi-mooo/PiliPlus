@@ -132,12 +132,13 @@
 		<key>UIStatusBarHidden</key>
 		<false/>
 		<key>NSLocalNetworkUsageDescription</key>
-		<string>需要访问本地网络以发现和连接 DLNA 投屏设备</string>
+		<string>需要访问本地网络以发现 PiliPlus 和 DLNA 设备、推送视频并遥控播放</string>
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_ssdp._udp</string>
 			<string>_upnp._tcp</string>
 			<string>_http._tcp</string>
+			<string>_piliplus._tcp</string>
 		</array>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>

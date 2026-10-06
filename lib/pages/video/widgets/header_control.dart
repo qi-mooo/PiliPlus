@@ -24,6 +24,7 @@ import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
+import 'package:PiliPlus/pages/lan_cast/launch.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
@@ -1800,6 +1801,24 @@ class HeaderControlState extends State<HeaderControl>
                     );
                   }),
                 if (!isFileSource) ...[
+                  SizedBox(
+                    width: btnWidth,
+                    height: btnHeight,
+                    child: IconButton(
+                      tooltip: '局域网推送',
+                      style: btnStyle,
+                      onPressed: () => showLanCast(
+                        plPlayerController,
+                        introController.videoDetail.value.title ??
+                            'PiliPlus 视频',
+                      ),
+                      icon: const Icon(
+                        Icons.connected_tv,
+                        size: 19,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                   if (!isFSOrPip) ...[
                     if (videoDetailCtr.isUgc)
                       SizedBox(

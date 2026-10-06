@@ -6,6 +6,7 @@ import 'package:PiliPlus/common/widgets/draggable_sheet/dyn.dart';
 import 'package:PiliPlus/common/widgets/marquee.dart';
 import 'package:PiliPlus/models/common/video/live_quality.dart';
 import 'package:PiliPlus/pages/live_room/controller.dart';
+import 'package:PiliPlus/pages/lan_cast/launch.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
 import 'package:PiliPlus/pages/video/widgets/header_control.dart';
@@ -153,6 +154,13 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
                 onTap: () => plPlayerController.setAlwaysOnTop(!isAlwaysOnTop),
               );
             }),
+          ComBtn(
+            height: btnHeight,
+            tooltip: '局域网推送',
+            onTap: () =>
+                showLanCast(plPlayerController, liveController.title.value),
+            icon: const Icon(Icons.connected_tv, size: 18, color: Colors.white),
+          ),
           if (isFullScreen || PlatformUtils.isDesktop)
             ComBtn(
               height: btnHeight,

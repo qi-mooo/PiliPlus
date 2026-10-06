@@ -48,6 +48,7 @@ dependencies:
       url: https://github.com/bggRGjQaUbCoE/audio_session.git
       ref: dev
   battery_plus: ^7.0.0
+  bonsoir: ^7.1.5
   brotli: ^0.6.0
   cached_network_image_ce:
     git:
@@ -143,7 +144,7 @@ dependencies:
   path_provider: ^2.1.5
   permission_handler_android: ^14.0.0
   permission_handler_apple: ^9.4.7
-  permission_handler_platform_interface: ^4.3.0
+  permission_handler_platform_interface: ^4.4.1
   pretty_qr_code: ^3.3.0
   protobuf: ^6.0.0
   re_highlight: ^0.0.3
