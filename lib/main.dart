@@ -23,8 +23,11 @@ import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/calc_window_position.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
+import 'package:PiliPlus/utils/device_utils.dart';
 import 'package:PiliPlus/utils/extension/core_palettes_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
+import 'package:PiliPlus/utils/font_utils.dart';
+import 'package:PiliPlus/utils/ios/pip_helper.dart';
 import 'package:PiliPlus/utils/json_file_handler.dart';
 import 'package:PiliPlus/utils/max_screen_size.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
@@ -37,15 +40,11 @@ import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:catcher_2/catcher_2.dart';
 import 'package:collection/collection.dart';
-import 'package:cupertino_ui/cupertino_ui.dart'
-    show GlobalCupertinoLocalizations;
 import 'package:dynamic_color/dynamic_color.dart' show DynamicColorPlugin;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:flutter_localizations/flutter_localizations.dart'
-    show GlobalWidgetsLocalizations;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -104,27 +103,28 @@ void main() async {
   try {
     await GStorage.init();
   } catch (e) {
-    await Utils.copyText(e.toString());
+    await Utils.copyText(e.toString(), needToast: false);
     if (kDebugMode) debugPrint('GStorage init error: $e');
-    exit(0);
+    DeviceUtils.exitApp();
   }
   ScaledWidgetsFlutterBinding.instance.scaleFactor = Pref.uiScale;
   await Future.wait([
     _initDownPath(),
     _initTmpPath(),
     CacheManager.ensureInitialized(),
+    ?FontUtils.init(),
   ]);
   Get
     ..lazyPut(AccountService.new)
     ..lazyPut(DownloadService.new);
   HttpOverrides.global = _CustomHttpOverrides();
 
-  FocusManager.instance.addEarlyKeyEventHandler(_onKeyEvent);
   if (PlatformUtils.isMobile) {
     if (Platform.isAndroid) MaxScreenSize.init();
     await Future.wait([
       if (Pref.horizontalScreen) ?fullMode() else ?portraitUpMode(),
       setupServiceLocator(),
+      if (Platform.isIOS) IOSPipHelper.init(),
     ]);
   } else if (Platform.isWindows) {
     if (await WebViewEnvironment.getAvailableVersion() != null) {
@@ -143,6 +143,8 @@ void main() async {
   RequestUtils.syncHistoryStatus();
 
   SmartDialog.config.toast = SmartConfigToast(displayType: .onlyRefresh);
+
+  FocusManager.instance.addEarlyKeyEventHandler(_onKeyEvent);
 
   if (PlatformUtils.isMobile) {
     SystemChrome.setEnabledSystemUIMode(.edgeToEdge);
@@ -330,20 +332,30 @@ class MyApp extends StatelessWidget {
 
   static (ThemeData, ThemeData) getAllTheme() {
     final dynamicColor = _light != null && _dark != null && Pref.dynamicColor;
-    late final brandColor = colorThemeTypes[Pref.customColor].color;
-    late final variant = Pref.schemeVariant;
+
+    final ColorScheme lightScheme, darkScheme;
+    if (dynamicColor) {
+      lightScheme = _light!;
+      darkScheme = _dark!;
+    } else {
+      final customColor = Pref.customColor;
+      final brandColor =
+          colorThemeTypes.elementAtOrNull(customColor)?.color ??
+          Color(customColor);
+      final variant = Pref.schemeVariant;
+
+      lightScheme = brandColor.asColorSchemeSeed(variant, .light);
+      darkScheme = brandColor.asColorSchemeSeed(variant, .dark);
+    }
+
     return (
       ThemeUtils.lightTheme = ThemeUtils.getThemeData(
-        colorScheme: dynamicColor
-            ? _light!
-            : brandColor.asColorSchemeSeed(variant, .light),
+        colorScheme: lightScheme,
         isDynamic: dynamicColor,
       ),
       ThemeUtils.darkTheme = ThemeUtils.getThemeData(
         isDark: true,
-        colorScheme: dynamicColor
-            ? _dark!
-            : brandColor.asColorSchemeSeed(variant, .dark),
+        colorScheme: darkScheme,
         isDynamic: dynamicColor,
       ),
     );
@@ -357,11 +369,7 @@ class MyApp extends StatelessWidget {
       theme: light,
       darkTheme: dark,
       themeMode: ThemeUtils.themeMode = Pref.themeMode,
-      localizationsDelegates: const [
-        GlobalCupertinoLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       locale: const Locale("zh", "CN"),
       fallbackLocale: const Locale("zh", "CN"),
       supportedLocales: const [Locale("zh", "CN"), Locale("en", "US")],

@@ -99,6 +99,8 @@ $ModalBarrierPatch = "lib/scripts/modal_barrier.patch"
 # https://github.com/flutter/flutter/issues/182466
 $MouseCursorPatch = "lib/scripts/mouse_cursor.patch"
 
+$DoubleTapGesturePatch = "lib/scripts/double_tap_gesture.patch"
+
 if ($platform.ToLower() -eq "ios") {
     git apply $BottomSheetIOSPiliPlusPatch
     if ($LASTEXITCODE -eq 0) {
@@ -118,7 +120,8 @@ $patches = @($ModalBarrierPatch, $TextSelectionPatch, $MouseCursorPatch,
             $SelectableRegionPatch, $EditableTextPatch, $TextFieldPatch,
             $ScrollPositionPatch, $ScrollablePatch, $ScrollableGesturePatch,
             $DraggableScrollableSheetPatch, $ScaffoldPatch, $TextPatch,
-            $TextPainterPatch, $SliverPatch, $RefreshIndicatorPatch)
+            $TextPainterPatch, $SliverPatch, $RefreshIndicatorPatch,
+            $DoubleTapGesturePatch)
 
 switch ($platform.ToLower()) {
     "android" {
@@ -242,14 +245,61 @@ if (-not $MaterialUiDir) {
     throw "material_ui package not found in pub cache"
 }
 
+Write-Host "material_ui dir: $($MaterialUiDir.FullName)"
+
 Get-ChildItem -Path "$env:GITHUB_WORKSPACE/lib/scripts/material" -Filter *.patch | ForEach-Object {
-    (Get-Content $_.FullName -Raw) -replace "`r`n", "`n" | 
+    (Get-Content $_.FullName -Raw) -replace "`r`n", "`n" |
         Set-Content -NoNewline $_.FullName
 }
 
 cd $MaterialUiDir.FullName
 
 foreach ($patch in $patches_material) {
+    git apply "$env:GITHUB_WORKSPACE/$patch"
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "$patch applied"
+    } else {
+        throw "$LASTEXITCODE"
+    }
+}
+
+$BottomSheetIOSFlutterPatchCupertino = "lib/scripts/cupertino/bottom_sheet_ios_flutter.patch"
+
+$patches_cupertino = @()
+
+switch ($platform.ToLower()) {
+    "android" {
+    }
+    "ios" {
+        $patches_cupertino += $BottomSheetIOSFlutterPatchCupertino
+    }
+    "linux" {
+    }
+    "macos" {
+    }
+    "windows" {
+    }
+    default {}
+}
+
+$CupertinoUiDir = Get-ChildItem "$PubCacheDir/hosted/pub.dev" -Directory |
+    Where-Object { $_.Name -like "cupertino_ui-*" } |
+    Select-Object -Last 1
+
+if (-not $CupertinoUiDir) {
+    throw "cupertino_ui package not found in pub cache"
+}
+
+Write-Host "cupertino_ui dir: $($CupertinoUiDir.FullName)"
+
+Get-ChildItem -Path "$env:GITHUB_WORKSPACE/lib/scripts/cupertino" -Filter *.patch | ForEach-Object {
+    (Get-Content $_.FullName -Raw) -replace "`r`n", "`n" |
+        Set-Content -NoNewline $_.FullName
+}
+
+cd $CupertinoUiDir.FullName
+
+foreach ($patch in $patches_cupertino) {
     git apply "$env:GITHUB_WORKSPACE/$patch"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "$patch applied"

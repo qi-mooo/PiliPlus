@@ -17,7 +17,6 @@ import 'package:flutter/services.dart'
         KeyUpEvent,
         LogicalKeyboardKey;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
-import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 
 class PlayerFocus extends StatelessWidget {
@@ -45,7 +44,7 @@ class PlayerFocus extends StatelessWidget {
     return Focus(
       autofocus: true,
       onKeyEvent: (node, event) {
-        final handled = _handleKey(event);
+        final handled = _handleKey(context, event);
         if (handled ||
             PlayerShortcutConfig.shouldHandle(
               event.logicalKey,
@@ -103,7 +102,7 @@ class PlayerFocus extends StatelessWidget {
     }
   }
 
-  bool _handleKey(KeyEvent event) {
+  bool _handleKey(BuildContext context, KeyEvent event) {
     final key = event.logicalKey;
 
     if (HardwareKeyboard.instance.isMetaPressed) {
@@ -189,7 +188,7 @@ class PlayerFocus extends StatelessWidget {
 
       case PlayerShortcutAction.normalSpeed:
       case PlayerShortcutAction.doubleSpeed:
-        if (event is KeyDownEvent && hasPlayer) {
+        if (!plPlayerController.isLive && event is KeyDownEvent && hasPlayer) {
           final speed = action == PlayerShortcutAction.normalSpeed ? 1.0 : 2.0;
           if (speed != plPlayerController.playbackSpeed) {
             plPlayerController.setPlaybackSpeed(speed);
@@ -200,7 +199,7 @@ class PlayerFocus extends StatelessWidget {
 
       case PlayerShortcutAction.speedDown:
       case PlayerShortcutAction.speedUp:
-        if (event is KeyDownEvent && hasPlayer) {
+        if (!plPlayerController.isLive && event is KeyDownEvent && hasPlayer) {
           _setAdjacentSpeed(isIncrease: action == PlayerShortcutAction.speedUp);
         }
         return true;
@@ -316,7 +315,7 @@ class PlayerFocus extends StatelessWidget {
       case PlayerShortcutAction.follow:
         if (!plPlayerController.isLive && event is KeyDownEvent) {
           if (introController case final UgcIntroController ugcCtr) {
-            ugcCtr.actionRelationMod(Get.context!);
+            ugcCtr.actionRelationMod(context);
           }
         }
         return true;

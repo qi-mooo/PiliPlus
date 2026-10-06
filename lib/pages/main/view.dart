@@ -12,9 +12,9 @@ import 'package:PiliPlus/models/common/nav_bar_config.dart';
 import 'package:PiliPlus/pages/home/view.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
-import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
+import 'package:PiliPlus/utils/device_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
@@ -26,7 +26,6 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:tray_manager/tray_manager.dart';
-import 'package:win32/win32.dart' as kernel32;
 import 'package:window_manager/window_manager.dart';
 
 class MainApp extends StatefulWidget {
@@ -56,6 +55,9 @@ class _MainAppState extends PopScopeState<MainApp>
   void initState() {
     super.initState();
     addObserverMobile(this);
+    if (Platform.isMacOS) {
+      HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    }
     if (PlatformUtils.isDesktop) {
       windowManager
         ..addListener(this)
@@ -64,8 +66,8 @@ class _MainAppState extends PopScopeState<MainApp>
         trayManager.addListener(this);
         _handleTray();
       }
-    } else {
-      // FlutterSmartDialog throws
+    }
+    if (!Platform.isMacOS) {
       PiliScheme.init();
     }
   }
@@ -117,6 +119,9 @@ class _MainAppState extends PopScopeState<MainApp>
 
   @override
   void dispose() {
+    if (Platform.isMacOS) {
+      HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    }
     if (PlatformUtils.isDesktop) {
       trayManager.removeListener(this);
       windowManager.removeListener(this);
@@ -125,6 +130,13 @@ class _MainAppState extends PopScopeState<MainApp>
     PiliScheme.listener?.cancel();
     GStorage.close();
     super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    return event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyR &&
+        HardwareKeyboard.instance.isMetaPressed &&
+        _mainController.refreshRecommendations();
   }
 
   @override
@@ -139,7 +151,7 @@ class _MainAppState extends PopScopeState<MainApp>
 
   @override
   Future<void> onWindowMoved() async {
-    if (PlPlayerController.instance?.isDesktopPip ?? false) {
+    if (PlPlayerController.instance?.updatePipBounds() ?? false) {
       return;
     }
     final Offset offset = await windowManager.getPosition();
@@ -148,7 +160,7 @@ class _MainAppState extends PopScopeState<MainApp>
 
   @override
   Future<void> onWindowResized() async {
-    if (PlPlayerController.instance?.isDesktopPip ?? false) {
+    if (PlPlayerController.instance?.updatePipBounds() ?? false) {
       return;
     }
     final Rect bounds = await windowManager.getBounds();
@@ -172,15 +184,7 @@ class _MainAppState extends PopScopeState<MainApp>
     await GStorage.compact();
     await GStorage.close();
     await trayManager.destroy();
-    if (Platform.isWindows) {
-      // flutter_inappwebview
-      // 6.2.0-beta.2+ https://github.com/pichillilorenzo/flutter_inappwebview/issues/2482
-      // 6.1.5 https://github.com/pichillilorenzo/flutter_inappwebview/issues/2512#issuecomment-3031039587
-      final hProcess = kernel32.GetCurrentProcess();
-      kernel32.TerminateProcess(hProcess, 0);
-    } else {
-      exit(0);
-    }
+    DeviceUtils.exitApp();
   }
 
   @override
@@ -211,19 +215,29 @@ class _MainAppState extends PopScopeState<MainApp>
     }
   }
 
+  double? _opacity;
+
+  Future<void>? _setOpacity(double opacity) {
+    if (Platform.isWindows && _opacity != opacity) {
+      _opacity = opacity;
+      return windowManager.setOpacity(opacity);
+    }
+    return null;
+  }
+
+  @override
+  Future<void>? onWindowFocus() {
+    return _setOpacity(1.0);
+  }
+
   /// https://github.com/leanflutter/window_manager/issues/571
   Future<void> _hide() async {
-    if (Platform.isWindows) {
-      await windowManager.setOpacity(0.0);
-    }
+    await _setOpacity(0.0);
     await windowManager.hide();
   }
 
-  Future<void> _show() async {
-    if (Platform.isWindows) {
-      await windowManager.setOpacity(1.0);
-    }
-    await windowManager.show();
+  Future<void> _show() {
+    return windowManager.show();
   }
 
   @override
@@ -480,11 +494,7 @@ class _MainAppState extends PopScopeState<MainApp>
           child: bottomNav,
         );
       }
-      padding = .only(
-        top: _padding.top,
-        left: _padding.left,
-        right: _padding.right,
-      );
+      padding = _padding.copyWith(bottom: 0);
     } else {
       sideBar = DecoratedBox(
         decoration: BoxDecoration(
