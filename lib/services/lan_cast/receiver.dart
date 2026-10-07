@@ -12,6 +12,7 @@ import 'package:PiliPlus/services/lan_cast/server.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/services/lan_cast/settings.dart';
 import 'package:PiliPlus/services/lan_cast/store.dart';
+import 'package:PiliPlus/utils/desktop_window.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -64,6 +65,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
     if (Get.key.currentState == null) {
       throw const LanCastException('接收端尚未就绪', 503);
     }
+    await showDesktopWindow();
     final fullscreen = _current?.isFullScreen.value;
     _loading = true;
     _media = media;
@@ -157,6 +159,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
     _player?.receivingCastMediaKey = null;
     _player?.receivingCastRepeat = null;
     await player?.pause();
+    await _player?.restoreCastWindowTopmost();
     _media = null;
     _player = null;
   }

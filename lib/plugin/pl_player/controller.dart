@@ -39,6 +39,7 @@ import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/asset_utils.dart';
+import 'package:PiliPlus/utils/desktop_window.dart';
 import 'package:PiliPlus/utils/device_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/extension/box_ext.dart';
@@ -481,6 +482,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   Future<void> setAlwaysOnTop(bool value) {
     isAlwaysOnTop.value = value;
     return windowManager.setAlwaysOnTop(value);
+  }
+
+  bool? _castWindowWasOnTop;
+
+  Future<void> restoreCastWindowTopmost() async {
+    final previous = _castWindowWasOnTop;
+    if (previous == null) return;
+    await setAlwaysOnTop(previous);
+    _castWindowWasOnTop = null;
   }
 
   Future<void> exitDesktopPip() {
@@ -1021,6 +1031,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         ? 'live:$liveRoomId'
         : '${(videoType ?? VideoType.ugc).name}:$aid:$cid:$epid';
     if (dataSource is! NetworkSource || receivingCastMediaKey != incomingKey) {
+      if (_castWindowWasOnTop != null) await restoreCastWindowTopmost();
       receivingCastMediaKey = null;
     }
     final session = _castSession ?? LanCastSession.instance;
@@ -1932,14 +1943,23 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     DeviceOrientation? orientation,
     bool isManualFS = true,
   }) async {
-    if (isDesktopPip) return;
-    if (isFullScreen.value == status) return;
-
+    final receivingOnDesktop = PlatformUtils.isDesktop && isReceivingCast;
+    if (isDesktopPip && !(receivingOnDesktop && status)) return;
+    if (isFullScreen.value == status &&
+        !(receivingOnDesktop && status) &&
+        _castWindowWasOnTop == null) {
+      return;
+    }
     if (_fsProcessing) return;
     _fsProcessing = true;
     this.isManualFS = isManualFS;
     try {
-      if (status) {
+      if (receivingOnDesktop && status) {
+        if (isDesktopPip) await exitDesktopPip();
+        await showDesktopWindow();
+        _castWindowWasOnTop ??= await windowManager.isAlwaysOnTop();
+      }
+      if (isFullScreen.value != status && status) {
         if (PlatformUtils.isMobile) {
           hideSystemBar();
           await changeOrientation(
@@ -1949,7 +1969,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         } else {
           await enterDesktopFullScreen(inAppFullScreen: inAppFullScreen);
         }
-      } else {
+      } else if (isFullScreen.value != status) {
         if (PlatformUtils.isMobile) {
           if (!removeSafeArea) {
             showSystemBar();
@@ -1961,6 +1981,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         } else {
           await exitDesktopFullScreen();
         }
+      }
+      if (receivingOnDesktop && status) {
+        // Native fullscreen changes the window's z-order, so raise it after
+        // that transition. Repeated fullscreen commands also raise it again.
+        await setAlwaysOnTop(true);
+        await windowManager.focus();
+      } else if (!status) {
+        await restoreCastWindowTopmost();
       }
     } finally {
       _setFullScreen(status);
@@ -2127,7 +2155,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     // playerStatus.close();
     // dataStatus.close();
 
-    if (PlatformUtils.isDesktop && isAlwaysOnTop.value) {
+    if (_castWindowWasOnTop != null) {
+      restoreCastWindowTopmost();
+    } else if (PlatformUtils.isDesktop && isAlwaysOnTop.value) {
       windowManager.setAlwaysOnTop(false);
     }
 

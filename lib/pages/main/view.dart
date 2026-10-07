@@ -215,11 +215,9 @@ class _MainAppState extends PopScopeState<MainApp>
     }
   }
 
-  double? _opacity;
-
   Future<void>? _setOpacity(double opacity) {
-    if (Platform.isWindows && _opacity != opacity) {
-      _opacity = opacity;
+    if (Platform.isWindows) {
+      // A cast can change opacity outside this tray handler.
       return windowManager.setOpacity(opacity);
     }
     return null;
