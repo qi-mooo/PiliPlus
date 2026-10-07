@@ -24,7 +24,6 @@ import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
-import 'package:PiliPlus/pages/lan_cast/launch.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
@@ -507,7 +506,10 @@ class HeaderControlState extends State<HeaderControl>
                         onTap: () => showPlayerVolumeDialog(
                           context,
                           () => (context as Element).markNeedsBuild(),
-                          onChanged: player.setVolume,
+                          onChanged: plPlayerController.isCasting
+                              ? (value) =>
+                                    plPlayerController.setVolume(value / 100)
+                              : player.setVolume,
                         ),
                       ),
                     ),
@@ -1805,51 +1807,31 @@ class HeaderControlState extends State<HeaderControl>
                     width: btnWidth,
                     height: btnHeight,
                     child: IconButton(
-                      tooltip: '局域网推送',
+                      tooltip: '投屏',
                       style: btnStyle,
-                      onPressed: () => showLanCast(
-                        plPlayerController,
-                        introController.videoDetail.value.title ??
-                            'PiliPlus 视频',
-                      ),
+                      onPressed: videoDetailCtr.onCast,
                       icon: const Icon(
-                        Icons.connected_tv,
+                        Icons.cast,
                         size: 19,
                         color: Colors.white,
                       ),
                     ),
                   ),
-                  if (!isFSOrPip) ...[
-                    if (videoDetailCtr.isUgc)
-                      SizedBox(
-                        width: btnWidth,
-                        height: btnHeight,
-                        child: IconButton(
-                          tooltip: '听音频',
-                          style: btnStyle,
-                          onPressed: videoDetailCtr.toAudioPage,
-                          icon: const Icon(
-                            Icons.headphones_outlined,
-                            size: 19,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                  if (!isFSOrPip && videoDetailCtr.isUgc)
                     SizedBox(
                       width: btnWidth,
                       height: btnHeight,
                       child: IconButton(
-                        tooltip: '投屏',
+                        tooltip: '听音频',
                         style: btnStyle,
-                        onPressed: videoDetailCtr.onCast,
+                        onPressed: videoDetailCtr.toAudioPage,
                         icon: const Icon(
-                          Icons.cast,
+                          Icons.headphones_outlined,
                           size: 19,
                           color: Colors.white,
                         ),
                       ),
                     ),
-                  ],
                   if (kDebugMode || plPlayerController.enableSponsorBlock)
                     SizedBox(
                       width: btnWidth,

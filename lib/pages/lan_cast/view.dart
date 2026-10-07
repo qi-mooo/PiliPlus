@@ -1,19 +1,20 @@
-import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
-import 'package:PiliPlus/pages/lan_cast/controls.dart';
+import 'package:PiliPlus/pages/lan_cast/receiver.dart';
+import 'package:PiliPlus/pages/dlna/view.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/services/lan_cast/client.dart';
 import 'package:PiliPlus/services/lan_cast/discovery.dart';
-import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/permission.dart';
+import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
+import 'package:PiliPlus/services/lan_cast/store.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
-import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 
 class LanCastPage extends StatefulWidget {
-  const LanCastPage({super.key, this.media, this.onPushed});
-  final LanCastMedia Function()? media;
-  final Future<void> Function()? onPushed;
-
+  const LanCastPage({super.key, this.player, this.dlnaUrl});
+  final PlPlayerController? player;
+  final Future<String> Function()? dlnaUrl;
   @override
   State<LanCastPage> createState() => _LanCastPageState();
 }
@@ -21,13 +22,15 @@ class LanCastPage extends StatefulWidget {
 class _LanCastPageState extends State<LanCastPage> {
   final _discovery = LanCastDiscovery();
   final _session = LanCastSession.instance;
+  final _store = LanCastStore.instance;
   String? _error;
   bool _connecting = false;
+  bool _dlnaConnecting = false;
 
   @override
   void initState() {
     super.initState();
-    if (!_session.connected) _discovery.start();
+    if (widget.player != null) _discovery.start();
   }
 
   @override
@@ -47,17 +50,14 @@ class _LanCastPageState extends State<LanCastPage> {
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
-          onChanged: (value) => input = value,
           autofocus: true,
           maxLength: code ? 6 : 80,
           keyboardType: code ? TextInputType.number : TextInputType.url,
           inputFormatters: code
               ? [FilteringTextInputFormatter.digitsOnly]
               : null,
-          decoration: InputDecoration(
-            labelText: label,
-            hintText: code ? null : '192.168.1.8:54321',
-          ),
+          decoration: InputDecoration(labelText: label),
+          onChanged: (value) => input = value,
           onSubmitted: (value) => Navigator.pop(context, value.trim()),
         ),
         actions: [
@@ -75,21 +75,15 @@ class _LanCastPageState extends State<LanCastPage> {
   }
 
   Future<void> _manual() async {
-    final address = await _input(title: '手动连接', label: '接收端地址');
+    final address = await _input(title: '手动连接', label: '接收端 IP 地址和端口');
     if (address == null || !mounted) return;
     LanCastClient? client;
     try {
       await ensureLanCastPermission();
-      if (!mounted) return;
       client = LanCastClient(lanCastAddress(address));
-      setState(() {
-        _connecting = true;
-        _error = null;
-      });
+      setState(() => _connecting = true);
       final device = await client.info();
-      if (!mounted) return;
-      setState(() => _connecting = false);
-      await _connect(device);
+      if (mounted) await _connect(device);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -99,181 +93,167 @@ class _LanCastPageState extends State<LanCastPage> {
   }
 
   Future<void> _connect(LanCastDevice device) async {
-    if (widget.media == null) return;
-    final code = await _input(
-      title: '连接 ${device.name}',
-      label: '接收端显示的 6 位连接码',
-      code: true,
-    );
-    if (code == null || !mounted) return;
-    if (code.length != 6) {
-      setState(() => _error = '请输入 6 位连接码');
+    final player = widget.player;
+    if (player == null) return;
+    if (player.videoPlayerController == null ||
+        player.dataSource is! NetworkSource) {
+      setState(() => _error = '请先开始在线视频播放，再推送到 PiliPlus');
       return;
+    }
+    String? code;
+    if (!_store.targets.containsKey(device.id)) {
+      code = await _input(
+        title: '配对 ${device.name}',
+        label: '接收端配对模式显示的 6 位码',
+        code: true,
+      );
+      if (code == null || !mounted) return;
+      if (code.length != 6) {
+        setState(() => _error = '请输入 6 位配对码');
+        return;
+      }
     }
     setState(() {
       _connecting = true;
       _error = null;
     });
+    final key = player.castMediaKey;
+    final wasPlaying = player.playerStatus.isPlaying;
     try {
-      final media = widget.media!();
+      final media = player.castMedia;
+      await player.pause(localOnly: true);
       await _session.connect(device, code, media);
-      await widget.onPushed?.call();
+      if (!identical(PlPlayerController.instance, player) ||
+          player.castMediaKey != key) {
+        await _session.disconnect();
+        return;
+      }
+      await player.attachCast(_session);
+      if (mounted) Navigator.pop(context);
     } catch (e) {
+      if (wasPlaying &&
+          identical(PlPlayerController.instance, player) &&
+          player.castMediaKey == key) {
+        await player.play();
+      }
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _connecting = false);
     }
   }
 
-  Future<void> _pushCurrent() async {
-    try {
-      if (await _session.load(widget.media!())) await widget.onPushed?.call();
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    }
-  }
-
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([_discovery, _session]),
-    builder: (context, _) {
-      final connected = _session.connected;
-      final busy = _connecting || _session.busy;
-      return SimpleScaffold(
-        appBar: AppBar(
-          title: Text(connected ? '播放遥控器' : '局域网推送'),
-          actions: [
-            if (!connected)
-              IconButton(
-                tooltip: '重新搜索',
-                onPressed: _discovery.searching ? null : _discovery.start,
-                icon: const Icon(Icons.refresh),
-              ),
-          ],
-        ),
-        body: SafeArea(
-          top: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
+  Widget build(BuildContext context) {
+    if (widget.player == null) return const LanCastReceiverPage();
+    return ListenableBuilder(
+      listenable: Listenable.merge([_discovery, _session]),
+      builder: (context, _) {
+        final devices = <String, LanCastDevice>{
+          for (final entry in _store.targets.entries)
+            entry.key: LanCastDevice(
+              id: entry.key,
+              name: entry.value['name'] as String,
+              uri: Uri.parse(entry.value['uri'] as String),
+            ),
+          for (final device in _discovery.devices.values)
+            if (device.id != _store.id) device.id: device,
+        };
+        final busy = _connecting || _dlnaConnecting || _session.busy;
+        return PopScope(
+          canPop: !_connecting && !_dlnaConnecting,
+          child: Material(
+            child: SafeArea(
+              top: false,
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
+                  Text('投屏', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
                   if (busy || _discovery.searching)
                     const LinearProgressIndicator(),
                   if (_error ?? _session.error case final error?)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        error,
-                        style: TextStyle(color: ColorScheme.of(context).error),
-                      ),
-                    ),
-                  if (connected) ...[
-                    const SizedBox(height: 20),
-                    Icon(
-                      _session.online ? Icons.cast_connected : Icons.wifi_off,
-                      size: 56,
-                      color: ColorScheme.of(context).primary,
-                    ),
-                    const SizedBox(height: 16),
                     Text(
-                      _session.device!.name,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleLarge,
+                      error,
+                      style: TextStyle(color: ColorScheme.of(context).error),
                     ),
-                    const SizedBox(height: 8),
-                    Text(_session.status.title, textAlign: TextAlign.center),
-                    const SizedBox(height: 24),
-                    LanCastControls(
-                      status: _session.status,
-                      onCommand: _session.command,
-                      enabled: _session.online && !busy,
-                    ),
-                    if (!_session.online)
-                      OutlinedButton.icon(
-                        onPressed: busy ? null : _session.refresh,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('重新连接'),
-                      ),
-                    if (widget.media != null)
-                      TextButton.icon(
-                        onPressed: busy ? null : _pushCurrent,
-                        icon: const Icon(Icons.send_to_mobile),
-                        label: const Text('推送当前视频'),
-                      ),
-                    OutlinedButton.icon(
-                      onPressed: busy ? null : _session.disconnect,
-                      icon: const Icon(Icons.stop_circle_outlined),
-                      label: const Text('结束推送并停止播放'),
+                  if (_session.connected) ...[
+                    ListTile(
+                      leading: const Icon(Icons.cast_connected),
+                      title: Text(_session.device!.name),
+                      subtitle: Text(_session.status.title),
                     ),
                     if (!_session.online)
                       TextButton(
-                        onPressed: busy ? null : _session.forget,
-                        child: const Text('关闭遥控器（接收端可能继续播放）'),
+                        onPressed: _session.refresh,
+                        child: const Text('重试连接'),
                       ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      '返回后远端继续播放，可从播放器或“设置 → 播放设置 → 局域网推送”重新打开遥控器。',
-                      textAlign: TextAlign.center,
+                    OutlinedButton(
+                      onPressed: busy
+                          ? null
+                          : () async {
+                              await widget.player!.disconnectCast();
+                              if (context.mounted) Navigator.pop(context);
+                            },
+                      child: const Text('断开推送（保留配对）'),
                     ),
                   ] else ...[
                     const ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.devices),
-                      title: Text('推送到另一台 PiliPlus'),
-                      subtitle: Text(
-                        '两台设备连接同一局域网，在接收端打开“设置 → 播放设置 → 局域网推送 → 接收播放”。',
-                      ),
+                      title: Text('PiliPlus 设备'),
                     ),
-                    if (widget.media == null)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Text('发送视频时，请从视频或直播播放器上的“局域网推送”按钮进入。'),
-                      ),
                     if (_discovery.error case final error?) Text(error),
-                    if (_discovery.devices.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 36),
-                        child: Column(
-                          children: [
-                            Icon(Icons.wifi_find, size: 48),
-                            SizedBox(height: 12),
-                            Text('正在等待接收设备…'),
-                            Text('请开启接收播放并允许本地网络访问'),
-                          ],
-                        ),
-                      ),
-                    for (final device in _discovery.devices.values)
+                    for (final device in devices.values)
                       ListTile(
                         leading: const Icon(Icons.connected_tv),
                         title: Text(device.name),
-                        subtitle: Text('${device.uri.host}:${device.uri.port}'),
-                        trailing: const Icon(Icons.chevron_right),
-                        enabled: !busy && widget.media != null,
+                        subtitle: Text(
+                          _store.targets.containsKey(device.id)
+                              ? 'PiliPlus · 已配对'
+                              : 'PiliPlus · 未配对',
+                        ),
+                        enabled: !busy,
                         onTap: () => _connect(device),
                       ),
-                    if (widget.media != null)
-                      OutlinedButton.icon(
-                        onPressed: busy ? null : _manual,
-                        icon: const Icon(Icons.add_link),
-                        label: const Text('手动输入设备地址'),
+                    if (devices.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text('正在查找局域网中的 PiliPlus…'),
                       ),
-                    const Divider(height: 40),
-                    FilledButton.icon(
-                      onPressed: busy
-                          ? null
-                          : () => Get.toNamed('/lanCastReceiver'),
-                      icon: const Icon(Icons.tv),
-                      label: const Text('在此设备接收播放'),
+                    TextButton.icon(
+                      onPressed: busy ? null : _discovery.start,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('重新搜索'),
                     ),
+                    TextButton.icon(
+                      onPressed: busy ? null : _manual,
+                      icon: const Icon(Icons.add_link),
+                      label: const Text('手动输入设备地址'),
+                    ),
+                    if (widget.dlnaUrl case final dlnaUrl?) ...[
+                      const Divider(),
+                      DLNADeviceList(
+                        enabled: !_connecting && !_session.busy,
+                        mediaUrl: dlnaUrl,
+                        title: widget.player!.mediaTitle,
+                        onBusyChanged: (value) =>
+                            setState(() => _dlnaConnecting = value),
+                        onConnected: () async {
+                          if (identical(
+                            PlPlayerController.instance,
+                            widget.player,
+                          )) {
+                            await widget.player!.pause(localOnly: true);
+                          }
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                      ),
+                    ],
                   ],
                 ],
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
+        );
+      },
+    );
+  }
 }

@@ -402,7 +402,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       plPlayerController!
         ..removeStatusLister(playerListener)
         ..removePositionListener(positionListener)
-        ..pause();
+        ..pause(localOnly: true);
     }
   }
 
@@ -420,7 +420,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     addObserverMobile(this);
 
     plPlayerController?.isLive = false;
-    if (videoDetailController.plPlayerController.playerStatus.isPlaying &&
+    if (!videoDetailController.plPlayerController.isCasting &&
+        videoDetailController.plPlayerController.playerStatus.isPlaying &&
         videoDetailController.playerStatus != PlayerStatus.playing) {
       videoDetailController.plPlayerController.pause();
     }

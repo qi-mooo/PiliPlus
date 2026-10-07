@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:PiliPlus/build_config.dart';
@@ -18,6 +19,8 @@ import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
+import 'package:PiliPlus/services/lan_cast/receiver.dart';
+import 'package:PiliPlus/services/lan_cast/store.dart';
 import 'package:PiliPlus/services/logger.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
@@ -102,6 +105,7 @@ void main() async {
   await _initAppPath();
   try {
     await GStorage.init();
+    await LanCastStore.initialize();
   } catch (e) {
     await Utils.copyText(e.toString(), needToast: false);
     if (kDebugMode) debugPrint('GStorage init error: $e');
@@ -220,6 +224,9 @@ void main() async {
   } else {
     runApp(const MyApp());
   }
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(LanCastReceiver.instance.restore());
+  });
 }
 
 KeyEventResult _onKeyEvent(KeyEvent event) {

@@ -26,7 +26,7 @@ import 'package:material_ui/material_ui.dart';
 List<SettingsModel> get playSettings => [
   NormalModel(
     title: '局域网推送',
-    subtitle: '接收其他 PiliPlus 的视频，或打开播放遥控器',
+    subtitle: '配对设备，在视频页推送和遥控播放',
     leading: const Icon(Icons.connected_tv),
     onTap: (_, _) => Get.toNamed('/lanCast'),
   ),

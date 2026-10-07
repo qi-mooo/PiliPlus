@@ -261,12 +261,7 @@ class PlayerFocus extends StatelessWidget {
 
       case PlayerShortcutAction.mute:
         if (event is KeyDownEvent && hasPlayer) {
-          final isMuted = !plPlayerController.isMuted;
-          plPlayerController.videoPlayerController!.setVolume(
-            isMuted ? 0 : plPlayerController.volume.value * 100,
-          );
-          plPlayerController.isMuted = isMuted;
-          SmartDialog.showToast('${isMuted ? '' : '取消'}静音');
+          plPlayerController.toggleMute();
         }
         return true;
 

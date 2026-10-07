@@ -58,6 +58,7 @@ class LiveRoomController extends GetxController {
   final String heroTag;
 
   int roomId = Get.arguments;
+  bool _lanCastPending = Get.parameters['lanCast'] == 'true';
   int? ruid;
   DanmakuController<DanmakuExtra>? danmakuController;
   final plPlayerController = PlPlayerController.getInstance(
@@ -223,7 +224,10 @@ class LiveRoomController extends GetxController {
     return plPlayerController.setDataSource(
       NetworkSource(videoSource: videoUrl!, audioSource: null),
       isLive: true,
-      autoplay: autoplay,
+      liveRoomId: roomId,
+      mediaTitle: title.value,
+      autoplay: _lanCastPending ? false : autoplay,
+      onInit: () => _lanCastPending = false,
       isVertical: isPortrait.value,
       autoFullScreenFlag: autoFullScreenFlag,
     );

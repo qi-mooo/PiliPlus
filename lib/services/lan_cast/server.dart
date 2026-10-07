@@ -4,26 +4,54 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
+import 'package:PiliPlus/services/lan_cast/store.dart';
 
-/// Only alive while the user has the receiving page open.
 class LanCastServer {
-  LanCastServer({required this.name, required this.playback});
+  LanCastServer({
+    required this.name,
+    required this.playback,
+    required this.store,
+    this.onChanged,
+  });
 
   final String name;
   final LanCastPlayback playback;
-  final String id = lanCastSecret(12);
-  String pairingCode = _newCode();
-  String? sender;
-  String? _token;
+  final LanCastStore store;
+  final void Function()? onChanged;
+  String get id => store.id;
+  String? pairingCode;
+  Timer? _pairingTimer;
+  String? _activePeer;
+  DateTime? _lastSeen;
+  String? get sender => store.peers[_activePeer]?['name'] as String?;
   HttpServer? _server;
   Future<void> _mutations = Future.value();
   final List<DateTime> _failedPairings = [];
   bool _closed = false;
 
   int get port => _server!.port;
-  bool get paired => _token != null;
+  bool get paired => _activePeer != null;
   static String _newCode() =>
       Random.secure().nextInt(1000000).toString().padLeft(6, '0');
+
+  void beginPairing() {
+    pairingCode = _newCode();
+    _pairingTimer?.cancel();
+    _pairingTimer = Timer(const Duration(minutes: 2), endPairing);
+    onChanged?.call();
+  }
+
+  void endPairing() {
+    pairingCode = null;
+    _pairingTimer?.cancel();
+    onChanged?.call();
+  }
+
+  Future<void> revoke(String peer) => _serialize(() async {
+    await store.remove('peers', peer);
+    if (_activePeer == peer) await _release();
+    onChanged?.call();
+  });
 
   Future<void> start({InternetAddress? address}) async {
     _server = await HttpServer.bind(address ?? InternetAddress.anyIPv4, 0);
@@ -53,12 +81,20 @@ class LanCastServer {
           'id': id,
           'name': name,
           'paired': paired,
+          'pairing': pairingCode != null,
         };
       } else if (request.method == 'GET' && path == '/status') {
-        _authorize(request);
+        _authorize(request, active: true);
         result = playback.status.toJson();
       } else if (request.method == 'POST' &&
-          ['/pair', '/load', '/command', '/disconnect'].contains(path)) {
+          [
+            '/pair',
+            '/connect',
+            '/load',
+            '/command',
+            '/disconnect',
+            '/unpair',
+          ].contains(path)) {
         if (path != '/pair') _authorize(request);
         if (request.headers.contentType?.mimeType != 'application/json') {
           throw const LanCastException('需要 JSON 请求', 415);
@@ -98,12 +134,20 @@ class LanCastServer {
     return result;
   }
 
-  void _authorize(HttpRequest request) {
-    if (_token == null ||
-        request.headers.value(HttpHeaders.authorizationHeader) !=
-            'Bearer $_token') {
-      throw const LanCastException('连接已结束，请重新连接设备', 401);
+  String _authorize(HttpRequest request, {bool active = false}) {
+    final authorization = request.headers.value(
+      HttpHeaders.authorizationHeader,
+    );
+    for (final peer in store.peers.entries) {
+      if (authorization == 'Bearer ${peer.value['token']}') {
+        if (active && _activePeer != peer.key) {
+          throw const LanCastException('推送连接已结束，请重新选择设备', 409);
+        }
+        if (active) _lastSeen = DateTime.now();
+        return peer.key;
+      }
     }
+    throw const LanCastException('此设备尚未配对或配对已取消，请重新配对', 401);
   }
 
   Future<Map<String, dynamic>> _mutate(
@@ -113,6 +157,9 @@ class LanCastServer {
     if (_closed) throw const LanCastException('接收已关闭', 503);
     final path = request.uri.path;
     if (path == '/pair') {
+      if (pairingCode == null) {
+        throw const LanCastException('请先在接收端开启配对模式', 403);
+      }
       final now = DateTime.now();
       _failedPairings.removeWhere(
         (time) => now.difference(time).inSeconds >= 60,
@@ -124,13 +171,33 @@ class LanCastServer {
         _failedPairings.add(now);
         throw const LanCastException('连接码不正确', 403);
       }
-      if (paired) throw const LanCastException('设备正在接受其他设备的控制，请先在接收端断开', 409);
-      sender = lanCastText(body['sender'], maxLength: 80);
-      _token = lanCastSecret();
-      return {'token': _token};
+      final peer = lanCastText(body['id'], maxLength: 80);
+      final name = lanCastText(body['sender'], maxLength: 80);
+      final token = lanCastSecret();
+      await store.put('peers', peer, {'name': name, 'token': token});
+      endPairing();
+      return {'token': token};
     }
     // Recheck after queued operations: a previous request may have revoked the token.
-    _authorize(request);
+    final peer = _authorize(request);
+    if (path == '/unpair') {
+      await store.remove('peers', peer);
+      if (_activePeer == peer) await _release();
+      onChanged?.call();
+      return {};
+    }
+    if (path == '/connect') {
+      if (_activePeer != null &&
+          _activePeer != peer &&
+          DateTime.now().difference(_lastSeen!).inSeconds < 30) {
+        throw const LanCastException('另一台设备正在推送，请先断开', 409);
+      }
+      _activePeer = peer;
+      _lastSeen = DateTime.now();
+      onChanged?.call();
+      return playback.status.toJson();
+    }
+    _authorize(request, active: true);
     switch (path) {
       case '/load':
         await playback.load(LanCastMedia.fromJson(body));
@@ -141,10 +208,6 @@ class LanCastServer {
     }
     return playback.status.toJson();
   }
-
-  // Local receiver controls share the same queue as network commands.
-  Future<void> control(String action, [double? value]) =>
-      _serialize(() => _control(action, value));
 
   Future<void> _control(Object? action, Object? rawValue) async {
     if (_closed) throw const LanCastException('接收已关闭', 503);
@@ -168,16 +231,17 @@ class LanCastServer {
   }
 
   Future<void> _release() async {
-    _token = null;
-    sender = null;
-    pairingCode = _newCode();
+    _activePeer = null;
+    _lastSeen = null;
     await playback.stop();
+    onChanged?.call();
   }
 
   Future<void> disconnect() => _serialize(_release);
 
   Future<void> close() async {
     _closed = true;
+    endPairing();
     await _server?.close(force: true);
     await _serialize(_release);
   }

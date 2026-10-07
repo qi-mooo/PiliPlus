@@ -176,6 +176,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   }
 
   void _onVolumeChanged(double value) {
+    if (plPlayerController.isCasting) {
+      if (mounted) plPlayerController.setVolume(value);
+      return;
+    }
     if (mounted && !plPlayerController.volumeInterceptEventStream) {
       plPlayerController.volume.value = value;
       if (Platform.isIOS && !FlutterVolumeController.showSystemUI) {
@@ -196,7 +200,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   void _getCurrVolume() {
     FlutterVolumeController.getVolume().then((res) {
-      if (mounted) {
+      if (mounted && !plPlayerController.isCasting) {
         plPlayerController.volume.value = res!;
       }
     });
@@ -333,6 +337,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (plPlayerController.isCasting) return;
     // Keep playing in the PiP window.
     if (Platform.isIOS && IOSPipHelper.isActive) return;
     if (!plPlayerController.continuePlayInBackground.value) {
@@ -981,8 +986,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         ..seekToPos = null;
     } else {
       plPlayerController.position.value =
-          plPlayerController.videoPlayerController?.state.position.inSeconds ??
-          0;
+          plPlayerController.positionInMilliseconds ~/ 1000;
     }
     plPlayerController.onSeekEnd();
   }
@@ -2047,6 +2051,19 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
             child: Obx(
               () {
                 final videoFit = plPlayerController.videoFit.value;
+                final castDevice = plPlayerController.castDevice.value;
+                if (castDevice.isNotEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        castDevice,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  );
+                }
                 return Transform.flip(
                   flipX: plPlayerController.flipX.value,
                   flipY: plPlayerController.flipY.value,

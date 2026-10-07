@@ -507,6 +507,7 @@ abstract final class PageUtils {
   static void toLiveRoom(
     int? roomId, {
     bool off = false,
+    bool lanCast = false,
   }) {
     if (roomId == null) {
       return;
@@ -514,6 +515,7 @@ abstract final class PageUtils {
     Get.offOrToNamed(
       '/liveRoom',
       arguments: roomId,
+      parameters: lanCast ? const {'lanCast': 'true'} : null,
       off: off,
       preventDuplicates: off,
     );

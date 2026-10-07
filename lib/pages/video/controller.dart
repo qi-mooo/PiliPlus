@@ -36,6 +36,7 @@ import 'package:PiliPlus/models_new/video/video_pbp/data.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/models_new/video/video_stein_edgeinfo/data.dart';
 import 'package:PiliPlus/pages/audio/view.dart';
+import 'package:PiliPlus/pages/lan_cast/launch.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
 import 'package:PiliPlus/pages/search/widgets/search_text.dart';
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
@@ -52,6 +53,7 @@ import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/heart_beat_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
+import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
@@ -369,6 +371,7 @@ class VideoDetailController extends GetxController
   void onInit() {
     super.onInit();
     args = Get.arguments;
+    if (args['lanCast'] == true) _autoPlay.value = true;
     videoType = args['videoType'];
     if (videoType == VideoType.pgc) {
       if (!isLoginVideo) {
@@ -709,7 +712,9 @@ class VideoDetailController extends GetxController
     final currentVideoQa = this.currentVideoQa.value;
     if (currentVideoQa == null) return;
     _autoPlay.value = true;
-    playedTime = plPlayerController.videoPlayerController?.state.position;
+    playedTime = Duration(
+      milliseconds: plPlayerController.positionInMilliseconds,
+    );
     plPlayerController
       ..isBuffering.value = false
       ..buffered.value = 0;
@@ -769,12 +774,14 @@ class VideoDetailController extends GetxController
       aid: aid,
       bvid: bvid,
       cid: cid.value,
-      autoplay: autoplay ?? _autoPlay.value,
+      autoplay: args['lanCast'] == true ? false : autoplay ?? _autoPlay.value,
+      mediaTitle: args['title'] as String?,
       epid: isUgc ? null : epId,
       seasonId: isUgc ? null : seasonId,
       pgcType: isUgc ? null : pgcType,
       videoType: videoType,
       onInit: () {
+        args.remove('lanCast');
         videoState.value = true;
         setSubtitle(vttSubtitlesIndex.value);
       },
@@ -983,6 +990,7 @@ class VideoDetailController extends GetxController
           videosList.any((item) => _isHevcCodec(item.codecs!))) {
         currentDecodeFormats = VideoDecodeFormatType.HEVC;
       }
+
       /// 取出符合当前解码格式的videoItem
       firstVideo = videosList.firstWhere(
         (e) => currentDecodeFormats.codes.any(e.codecs!.startsWith),
@@ -1594,48 +1602,36 @@ class VideoDetailController extends GetxController
     );
   }
 
-  @pragma('vm:notify-debugger-on-exception')
-  Future<void> onCast() async {
-    SmartDialog.showLoading();
+  void onCast() {
+    String? title;
+    try {
+      title = isUgc
+          ? Get.find<UgcIntroController>(tag: heroTag).videoDetail.value.title
+          : Get.find<PgcIntroController>(tag: heroTag).videoDetail.value.title;
+    } catch (_) {}
+    showCastDevices(
+      plPlayerController,
+      title ?? 'PiliPlus 视频',
+      dlnaUrl: _dlnaUrl,
+    );
+  }
+
+  // Fetch the TV-compatible stream only after selecting a DLNA receiver.
+  Future<String> _dlnaUrl() async {
     final res = await VideoHttp.tvPlayUrl(
       cid: cid.value,
       objectId: epId ?? aid,
       playurlType: epId != null ? 2 : 1,
       qn: currentVideoQa.value?.code,
     );
-    SmartDialog.dismiss();
     if (res case Success(:final response)) {
       final first = response.durl?.firstOrNull;
       if (first == null || first.playUrls.isEmpty) {
-        SmartDialog.showToast('不支持投屏');
-        return;
+        throw const LanCastException('此视频没有可用的 DLNA 播放地址');
       }
-      final url = VideoUtils.getCdnUrl(first.playUrls);
-
-      String? title;
-      try {
-        if (isUgc) {
-          title = Get.find<UgcIntroController>(
-            tag: heroTag,
-          ).videoDetail.value.title;
-        } else {
-          title = Get.find<PgcIntroController>(
-            tag: heroTag,
-          ).videoDetail.value.title;
-        }
-      } catch (_) {}
-      if (kDebugMode) {
-        debugPrint(title);
-      }
-      Get.toNamed(
-        '/dlna',
-        parameters: {
-          'url': url,
-          'title': ?title,
-        },
-      );
+      return VideoUtils.getCdnUrl(first.playUrls);
     } else {
-      res.toast();
+      throw const LanCastException('无法获取 DLNA 播放地址，请稍后重试');
     }
   }
 }

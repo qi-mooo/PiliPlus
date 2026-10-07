@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 const lanCastServiceType = '_piliplus._tcp';
-const lanCastProtocolVersion = 1;
+const lanCastProtocolVersion = 2;
 const lanCastBodyLimit = 64 * 1024;
 
 String lanCastSecret([int bytes = 24]) {
@@ -33,66 +33,77 @@ double lanCastNumber(Object? value, double min, double max) {
   return value.toDouble();
 }
 
-String _mediaUrl(Object? value) {
-  final text = lanCastText(value, maxLength: 16000);
-  final uri = Uri.tryParse(text);
-  if (uri == null ||
-      !['http', 'https'].contains(uri.scheme) ||
-      uri.host.isEmpty ||
-      uri.userInfo.isNotEmpty ||
-      text.contains(RegExp(r'[\x00-\x20]'))) {
-    throw const LanCastException('仅支持 HTTP 或 HTTPS 在线视频');
-  }
-  return text;
-}
-
 class LanCastMedia {
   const LanCastMedia({
     required this.title,
-    required this.videoUrl,
-    this.audioUrl,
+    this.kind = 'ugc',
+    this.aid,
+    this.bvid,
+    this.cid,
+    this.epId,
+    this.seasonId,
+    this.pgcType,
+    this.roomId,
     this.position = 0,
     this.speed = 1,
-    this.isLive = false,
   });
 
   final String title;
-  final String videoUrl;
-  final String? audioUrl;
+  final String kind;
+  final int? aid, cid, epId, seasonId, pgcType, roomId;
+  final String? bvid;
   final int position;
   final double speed;
-  final bool isLive;
+  bool get isLive => kind == 'live';
+  String get key => isLive ? 'live:$roomId' : '$kind:$aid:$cid:$epId';
 
   factory LanCastMedia.fromJson(Map<String, dynamic> json) {
-    if (json['isLive'] is! bool) {
+    final kind = json['kind'];
+    if (!['ugc', 'pgc', 'pugv', 'live'].contains(kind)) {
       throw const LanCastException('无效的播放类型');
+    }
+    int? id(String name, {bool required = false}) {
+      final value = json[name];
+      if (value == null && !required) return null;
+      if (value is! int || value <= 0 || value > 9007199254740991) {
+        throw const LanCastException('无效的视频标识');
+      }
+      return value;
+    }
+
+    final bvid = json['bvid'];
+    if (bvid != null &&
+        (bvid is! String || !RegExp(r'^BV[0-9A-Za-z]{10}$').hasMatch(bvid))) {
+      throw const LanCastException('无效的视频标识');
     }
     return LanCastMedia(
       title: lanCastText(json['title']),
-      videoUrl: _mediaUrl(json['videoUrl']),
-      audioUrl: json['audioUrl'] == null ? null : _mediaUrl(json['audioUrl']),
+      kind: kind as String,
+      aid: id('aid', required: kind != 'live'),
+      bvid: bvid as String?,
+      cid: id('cid', required: kind != 'live'),
+      epId: id('epId', required: kind == 'pgc' || kind == 'pugv'),
+      seasonId: id('seasonId'),
+      pgcType: id('pgcType'),
+      roomId: id('roomId', required: kind == 'live'),
       position: lanCastNumber(json['position'], 0, 2592000000).round(),
       speed: lanCastNumber(json['speed'], 0.25, 4),
-      isLive: json['isLive'] as bool,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'title': title,
-    'videoUrl': videoUrl,
-    'audioUrl': audioUrl,
+    'kind': kind,
+    'aid': aid,
+    'bvid': bvid,
+    'cid': cid,
+    'epId': epId,
+    'seasonId': seasonId,
+    'pgcType': pgcType,
+    'roomId': roomId,
     'position': position,
     'speed': speed,
-    'isLive': isLive,
   };
-
-  // Length prefixes keep signed URLs (including commas/semicolons) intact.
-  String get playableUrl => audioUrl == null
-      ? videoUrl
-      : 'edl://!no_chapters;'
-            '%${utf8.encode(videoUrl).length}%$videoUrl;'
-            '!new_stream;!no_chapters;'
-            '%${utf8.encode(audioUrl!).length}%$audioUrl';
 }
 
 class LanCastStatus {
@@ -106,6 +117,7 @@ class LanCastStatus {
     this.speed = 1,
     this.isLive = false,
     this.error,
+    this.mediaKey = '',
   });
 
   final String title;
@@ -117,6 +129,7 @@ class LanCastStatus {
   final double speed;
   final bool isLive;
   final String? error;
+  final String mediaKey;
 
   factory LanCastStatus.fromJson(Map<String, dynamic> json) => LanCastStatus(
     title: json['title'] as String,
@@ -128,6 +141,7 @@ class LanCastStatus {
     speed: lanCastNumber(json['speed'], 0.25, 4),
     isLive: json['isLive'] as bool,
     error: json['error'] as String?,
+    mediaKey: json['mediaKey'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -140,6 +154,7 @@ class LanCastStatus {
     'speed': speed,
     'isLive': isLive,
     'error': error,
+    'mediaKey': mediaKey,
   };
 }
 

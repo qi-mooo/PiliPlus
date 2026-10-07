@@ -156,10 +156,13 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
             }),
           ComBtn(
             height: btnHeight,
-            tooltip: '局域网推送',
-            onTap: () =>
-                showLanCast(plPlayerController, liveController.title.value),
-            icon: const Icon(Icons.connected_tv, size: 18, color: Colors.white),
+            tooltip: '投屏',
+            onTap: () => showCastDevices(
+              plPlayerController,
+              liveController.title.value,
+              dlnaUrl: () async => plPlayerController.dataSource.videoSource,
+            ),
+            icon: const Icon(Icons.cast, size: 18, color: Colors.white),
           ),
           if (isFullScreen || PlatformUtils.isDesktop)
             ComBtn(
@@ -298,7 +301,10 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
                       onTap: () => showPlayerVolumeDialog(
                         context,
                         () {},
-                        onChanged: player.setVolume,
+                        onChanged: plPlayerController.isCasting
+                            ? (value) =>
+                                  plPlayerController.setVolume(value / 100)
+                            : player.setVolume,
                       ),
                     ),
                 ],

@@ -13,8 +13,8 @@ class LanCastClient {
 
   final Uri uri;
   final HttpClient _http = HttpClient();
-  String? _token;
-  bool get paired => _token != null;
+  String? token;
+  bool get paired => token != null;
 
   Future<Map<String, dynamic>> _request(
     String path, [
@@ -33,8 +33,8 @@ class LanCastClient {
           req.abort();
           throw const LanCastException('连接超时', 408);
         }
-        if (_token != null) {
-          req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_token');
+        if (token != null) {
+          req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
         }
         if (body != null) {
           req.headers.contentType = ContentType.json;
@@ -49,11 +49,11 @@ class LanCastClient {
           );
         }
         return result;
-      })().timeout(const Duration(seconds: 15));
+      })().timeout(Duration(seconds: path == '/load' ? 45 : 15));
     } on TimeoutException {
       timedOut = true;
       request?.abort();
-      throw const LanCastException('连接超时，请检查设备是否在同一局域网且接收页面已打开', 408);
+      throw const LanCastException('连接超时，请检查设备是否在同一局域网且已开启接收', 408);
     } on SocketException {
       throw const LanCastException('无法连接设备，请检查网络和接收端地址', 503);
     } on HttpException {
@@ -76,9 +76,22 @@ class LanCastClient {
     );
   }
 
-  Future<void> pair(String code, String sender) async {
-    final result = await _request('/pair', {'code': code, 'sender': sender});
-    _token = lanCastText(result['token']);
+  Future<void> pair(String code, String sender, String id) async {
+    final result = await _request('/pair', {
+      'code': code,
+      'sender': sender,
+      'id': id,
+    });
+    token = lanCastText(result['token']);
+  }
+
+  Future<void> connect() async {
+    await _request('/connect', {});
+  }
+
+  Future<void> unpair() async {
+    await _request('/unpair', {});
+    token = null;
   }
 
   Future<LanCastStatus> load(LanCastMedia media) async =>
@@ -91,7 +104,6 @@ class LanCastClient {
       );
   Future<void> disconnect() async {
     await _request('/disconnect', {});
-    _token = null;
   }
 
   void close() => _http.close(force: true);

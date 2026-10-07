@@ -30,6 +30,8 @@ import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
+import 'package:PiliPlus/services/lan_cast/protocol.dart';
+import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
@@ -78,6 +80,102 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   static PlPlayerController? _instance;
 
+  LanCastSession? _castSession;
+  final RxString castDevice = ''.obs;
+  bool get isCasting => _castSession != null;
+  int? liveRoomId;
+  String mediaTitle = 'PiliPlus 视频';
+  int sourceGeneration = 0;
+  double? _localVolume;
+
+  LanCastMedia get castMedia => LanCastMedia.fromJson(
+    LanCastMedia(
+      title: mediaTitle.isEmpty ? 'PiliPlus 视频' : mediaTitle,
+      kind: isLive ? 'live' : _videoType.name,
+      aid: _aid,
+      bvid: _bvid,
+      cid: cid,
+      epId: _epid,
+      seasonId: _seasonId,
+      pgcType: _pgcType,
+      roomId: liveRoomId,
+      position: positionInMilliseconds,
+      speed: playbackSpeed.clamp(0.25, 4),
+    ).toJson(),
+  );
+
+  String get castMediaKey =>
+      isLive ? 'live:$liveRoomId' : '${_videoType.name}:$_aid:$cid:$_epid';
+
+  Future<void> attachCast(LanCastSession session) async {
+    _castSession = session;
+    _localVolume = volume.value;
+    session.addListener(_syncCast);
+    await _videoPlayerController?.pause();
+    audioSessionHandler?.setActive(false);
+    _syncCast();
+    controls = true;
+  }
+
+  void _syncCast() {
+    final session = _castSession;
+    if (session == null) return;
+    if (!session.connected) {
+      final error = session.error;
+      _detachCast();
+      if (error != null) SmartDialog.showToast(error);
+      return;
+    }
+    castDevice.value = session.online
+        ? '正在 ${session.device!.name} 播放'
+        : '连接中断 · 点击投屏按钮重连';
+    final state = session.status;
+    position.value = state.position ~/ 1000;
+    updateDuration(Duration(milliseconds: state.duration));
+    buffered.value = duration.value;
+    isBuffering.value = state.buffering;
+    volume.value = state.volume / 100;
+    _playbackSpeed.value = state.speed;
+    final next = state.playing ? PlayerStatus.playing : PlayerStatus.paused;
+    if (next != playerStatus) {
+      playerStatus = next;
+      for (final listener in _statusListeners.toList()) {
+        listener(next);
+      }
+    }
+    for (final listener in _positionListeners.toList()) {
+      listener(Duration(milliseconds: state.position));
+    }
+  }
+
+  void _detachCast({bool restorePosition = true}) {
+    final session = _castSession;
+    if (session == null) return;
+    session.removeListener(_syncCast);
+    _castSession = null;
+    castDevice.value = '';
+    if (_localVolume != null) volume.value = _localVolume!;
+    _localVolume = null;
+    playerStatus = .paused;
+    isBuffering.value = false;
+    if (restorePosition && !isLive) {
+      _videoPlayerController?.seek(
+        Duration(milliseconds: session.status.position),
+      );
+      _videoPlayerController?.setRate(session.status.speed);
+    }
+    for (final listener in _statusListeners.toList()) {
+      listener(.paused);
+    }
+  }
+
+  Future<void> disconnectCast() async {
+    final session = _castSession;
+    if (session == null) return;
+    _detachCast();
+    await session.disconnect();
+  }
+
   PlayerStatus playerStatus = .paused;
 
   final Rx<DataStatus> dataStatus = Rx(.none);
@@ -91,7 +189,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   int get progress => isSeeking.value ? seekPosition.value : position.value;
 
   int get positionInMilliseconds =>
-      videoPlayerController?.state.position.inMilliseconds ?? 0;
+      _castSession?.status.position ??
+      videoPlayerController?.state.position.inMilliseconds ??
+      0;
 
   final RxInt buffered = RxInt(0);
 
@@ -175,6 +275,19 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   VideoController? get videoController => _videoController;
 
   bool isMuted = false;
+  double _volumeBeforeMute = 1;
+
+  void toggleMute() {
+    final muted = !isMuted;
+    if (isCasting) {
+      if (muted) _volumeBeforeMute = volume.value;
+      setVolume(muted ? 0 : _volumeBeforeMute);
+    } else {
+      _videoPlayerController?.setVolume(muted ? 0 : volume.value * 100);
+    }
+    isMuted = muted;
+    SmartDialog.showToast('${muted ? '' : '取消'}静音');
+  }
 
   /// 听视频
   late final RxBool onlyPlayAudio = false.obs;
@@ -791,14 +904,31 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     int? epid,
     int? seasonId,
     int? pgcType,
+    int? liveRoomId,
+    String? mediaTitle,
     VideoType? videoType,
     VoidCallback? onInit,
     Volume? volume,
     bool autoFullScreenFlag = false,
   }) async {
+    final incomingKey = isLive
+        ? 'live:$liveRoomId'
+        : '${(videoType ?? VideoType.ugc).name}:$aid:$cid:$epid';
+    if (isCasting) {
+      if (incomingKey == _castSession!.mediaKey) {
+        onInit?.call();
+        return;
+      }
+      // A new local video ends this cast; it must not silently control the old one.
+      _detachCast(restorePosition: false);
+      LanCastSession.instance.disconnect();
+    }
     try {
       _processing = true;
+      sourceGeneration++;
       this.isLive = isLive;
+      this.liveRoomId = liveRoomId;
+      if (mediaTitle != null) this.mediaTitle = mediaTitle;
       _videoType = videoType ?? VideoType.ugc;
       _videoQualityCode = videoQualityCode;
       this.width = width;
@@ -1035,6 +1165,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   Future<void>? refreshPlayer() {
+    if (_castSession case final session?) return session.refresh();
     if (dataSource is FileSource) {
       return null;
     }
@@ -1107,6 +1238,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _subscriptions = [
       /// playing
       stream.playing.listen((bool playing) {
+        if (isCasting) return;
         if (playing) {
           playerStatus = .playing;
           _stopWakeLockTimer();
@@ -1139,6 +1271,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
       ///completed
       stream.completed.listen((bool completed) {
+        if (isCasting) return;
         if (completed) {
           playerStatus = .completed;
           _startWakeLockTimer();
@@ -1153,6 +1286,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
       /// position
       stream.position.listen((Duration position) {
+        if (isCasting) return;
         final posInSeconds = position.inSeconds;
 
         if (posInSeconds != this.position.value) {
@@ -1170,13 +1304,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         }
       }),
       stream.duration.listen((Duration duration) {
+        if (isCasting) return;
         updateDuration(duration);
         _updateIOSPip();
       }),
       stream.buffer.listen((Duration buffer) {
+        if (isCasting) return;
         buffered.value = buffer.inSeconds;
       }),
       stream.buffering.listen((bool buffering) {
+        if (isCasting) return;
         isBuffering.value = buffering;
         if (!playerStatus.isCompleted) {
           _stopWakeLockTimer();
@@ -1195,6 +1332,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           }
         })),
       stream.error.listen((String event) {
+        if (isCasting) return;
         if (dataSource is FileSource &&
             event.startsWith("Failed to open file")) {
           return;
@@ -1266,6 +1404,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   Future<void> seek(Duration position, {bool isSeek = false}) async {
+    if (_castSession case final session?) {
+      return session.command('seek', position.inMilliseconds.toDouble());
+    }
     if (isSeek) {
       /// 拖动进度条调节时，不等待第一帧，防止抖动
       await _videoPlayerController?.stream.buffer.first;
@@ -1290,7 +1431,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _heartDuration = position.inSeconds;
 
     if (duration.value != 0) {
-      seek(position, isSeek: isSeek);
+      await seek(position, isSeek: isSeek);
     } else {
       // if (kDebugMode) debugPrint('seek duration else');
       _subForSeek?.cancel();
@@ -1304,6 +1445,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// 设置倍速
   Future<void> setPlaybackSpeed(double speed) async {
     lastPlaybackSpeed = playbackSpeed;
+    if (_castSession case final session?) {
+      return session.command('speed', speed.clamp(0.25, 4));
+    }
 
     final player = _videoPlayerController;
     if (speed == player?.state.rate) {
@@ -1338,6 +1482,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       await seekTo(Duration.zero, isSeek: false);
     }
 
+    if (_castSession case final session?) return session.command('play');
+
     await _videoPlayerController?.play();
 
     audioSessionHandler?.setActive(true);
@@ -1346,7 +1492,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   /// 暂停播放
-  Future<void> pause({bool notify = true, bool isInterrupt = false}) async {
+  Future<void> pause({
+    bool notify = true,
+    bool isInterrupt = false,
+    bool localOnly = false,
+  }) async {
+    if (_castSession case final session?) {
+      if (!localOnly && !isInterrupt) await session.command('pause');
+      return;
+    }
     await _videoPlayerController?.pause();
     playerStatus = .paused;
 
@@ -1389,6 +1543,18 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   final double maxVolume = PlatformUtils.isDesktop ? Pref.maxVolume : 1.0;
   Future<void> setVolume(double volume, {bool showIndicator = true}) async {
+    if (_castSession case final session?) {
+      await session.command('volume', (volume * 100).clamp(0, 100));
+      if (showIndicator) {
+        volumeIndicator.value = true;
+        volumeTimer?.cancel();
+        volumeTimer = Timer(
+          const Duration(milliseconds: 500),
+          () => volumeIndicator.value = false,
+        );
+      }
+      return;
+    }
     if (this.volume.value != volume) {
       this.volume.value = volume;
       try {
@@ -1490,16 +1656,20 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   bool get isCompleted =>
-      videoPlayerController!.state.completed ||
+      (!isCasting && videoPlayerController!.state.completed) ||
       durationInMilliseconds - positionInMilliseconds <= 50;
 
   // 双击播放、暂停
   Future<void> onDoubleTapCenter() async {
     if (!isLive && isCompleted) {
-      await videoPlayerController!.seek(Duration.zero);
-      videoPlayerController!.play();
+      await seek(Duration.zero);
+      await play();
     } else {
-      videoPlayerController!.playOrPause();
+      if (playerStatus.isPlaying) {
+        await pause();
+      } else {
+        await play();
+      }
     }
   }
 
@@ -1515,16 +1685,23 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   void onForward(Duration duration) {
-    onForwardBackward(videoPlayerController!.state.position + duration);
+    onForwardBackward(
+      Duration(milliseconds: positionInMilliseconds) + duration,
+    );
   }
 
   void onBackward(Duration duration) {
-    onForwardBackward(videoPlayerController!.state.position - duration);
+    onForwardBackward(
+      Duration(milliseconds: positionInMilliseconds) - duration,
+    );
   }
 
   void onForwardBackward(Duration duration) {
     seekTo(
-      duration.clamp(Duration.zero, videoPlayerController!.state.duration),
+      duration.clamp(
+        Duration.zero,
+        Duration(milliseconds: durationInMilliseconds),
+      ),
       isSeek: false,
     ).whenComplete(play);
   }
@@ -1762,6 +1939,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     _playerCount = 0;
+    if (isCasting) {
+      _detachCast(restorePosition: false);
+      LanCastSession.instance.disconnect();
+    }
     if (removeSafeArea) {
       showSystemBar();
     }
