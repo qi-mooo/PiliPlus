@@ -126,7 +126,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     PlPlayerController.setPlayCallBack(plPlayerController.play);
     _liveRoomController.startLiveTimer();
     if (plPlayerController.playerStatus.isPlaying &&
-        plPlayerController.cid == null) {
+        plPlayerController.cid == null &&
+        plPlayerController.liveRoomId == _liveRoomController.roomId) {
       _liveRoomController
         ..danmakuController?.resume()
         ..startLiveMsg();

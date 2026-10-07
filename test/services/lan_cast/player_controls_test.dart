@@ -1,3 +1,4 @@
+import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_pause_btn.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
@@ -21,6 +22,8 @@ class _Session extends LanCastSession {
       duration: 120000,
       speed: action == 'speed' ? value! : status.speed,
       volume: action == 'volume' ? value! : status.volume,
+      fullscreen: action == 'fullscreen' ? value == 1 : status.fullscreen,
+      canFullscreen: true,
     );
     notifyListeners();
   }
@@ -66,11 +69,19 @@ void main() {
           position: 42000,
           duration: 120000,
           speed: 1.5,
+          canFullscreen: true,
         );
       await player.attachCast(session);
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: PlayOrPauseButton(plPlayerController: player)),
+          home: Scaffold(
+            body: Column(
+              children: [
+                PlayOrPauseButton(plPlayerController: player),
+                LanCastFullscreenButton(player: player, session: session),
+              ],
+            ),
+          ),
         ),
       );
       expect(player.positionInMilliseconds, 42000);
@@ -101,6 +112,24 @@ void main() {
       await tester.pump();
       expect(session.commands, contains(('seek', 80000.0)));
       expect(player.positionInMilliseconds, 80000);
+      await tester.tap(find.byTooltip('接收端全屏'));
+      await tester.pump();
+      expect(session.commands.last, ('fullscreen', 1.0));
+      expect(player.isFullScreen.value, isFalse);
+      await tester.tap(find.byTooltip('退出接收端全屏'));
+      await tester.pump();
+      expect(session.commands.last, ('fullscreen', 0.0));
+      final beforeLeaving = session.commands.length;
+      player
+        ..onPopInvokedWithResult(true, null)
+        ..detachCast();
+      await tester.pump();
+      expect(session.connected, isTrue);
+      expect(session.status.playing, isTrue);
+      expect(session.commands.length, beforeLeaving);
+      await player.attachCast(session);
+      expect(player.positionInMilliseconds, 80000);
+      expect(session.commands.length, beforeLeaving);
       await player.disconnectCast();
       expect(player.isCasting, isFalse);
       expect(player.playerStatus.isPaused, isTrue);

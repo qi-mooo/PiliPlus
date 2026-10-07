@@ -14,6 +14,7 @@ class _Playback implements LanCastPlayback {
   LanCastMedia? media;
   final commands = <(String, double?)>[];
   bool playing = false;
+  bool fullscreen = false;
   int stopped = 0;
   Completer<void>? loading;
   bool failLoad = false;
@@ -26,6 +27,8 @@ class _Playback implements LanCastPlayback {
     playing: playing,
     isLive: media?.isLive ?? false,
     speed: media?.speed ?? 1,
+    fullscreen: fullscreen,
+    canFullscreen: true,
   );
   @override
   Future<void> load(LanCastMedia value) async {
@@ -40,6 +43,7 @@ class _Playback implements LanCastPlayback {
     commands.add((action, value));
     if (action == 'play') playing = true;
     if (action == 'pause') playing = false;
+    if (action == 'fullscreen') fullscreen = value == 1;
   }
 
   @override
@@ -192,6 +196,23 @@ void main() {
       expect((await client.load(_media)).playing, isTrue);
     });
 
+    test('fullscreen command is explicit, validates its value and works for live video', () async {
+      await pair();
+      await client.load(_live);
+      expect((await client.command('fullscreen', 1)).fullscreen, isTrue);
+      expect((await client.command('fullscreen', 1)).fullscreen, isTrue);
+      expect((await client.command('fullscreen', 0)).fullscreen, isFalse);
+      for (final value in [-1.0, 0.5, 2.0]) {
+        await expectLater(client.command('fullscreen', value), _status(400));
+      }
+      expect(playback.playing, isTrue);
+      expect(playback.commands, [
+        ('fullscreen', 1.0),
+        ('fullscreen', 1.0),
+        ('fullscreen', 0.0),
+      ]);
+    });
+
     test(
       'receiver restart retains identity and accepts saved credentials',
       () async {
@@ -311,6 +332,7 @@ void main() {
         expect(session.store.targets, contains(device.id));
         playback.failLoad = false;
         await session.connect(device, null, _media);
+        expect(session.media?.toJson(), _media.toJson());
         await Future.wait([
           session.command('speed', 3),
           session.command('speed', 1.5),
@@ -324,6 +346,7 @@ void main() {
           ('play', null),
         ]);
         await session.disconnect();
+        expect(session.media, isNull);
         expect(playback.playing, isFalse);
         await session.connect(device, null, _media);
         await server.revoke(session.store.id);

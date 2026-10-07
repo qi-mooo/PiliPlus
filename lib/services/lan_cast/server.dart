@@ -224,6 +224,12 @@ class LanCastServer {
       case 'speed':
         if (playback.status.isLive) throw const LanCastException('直播不支持倍速');
         value = lanCastNumber(rawValue, 0.25, 4);
+      case 'fullscreen':
+        if (!playback.status.canFullscreen) {
+          throw const LanCastException('接收端不支持远程全屏，请更新接收端');
+        }
+        value = lanCastNumber(rawValue, 0, 1);
+        if (value != 0 && value != 1) throw const LanCastException('无效的全屏状态');
       default:
         throw const LanCastException('不支持的遥控操作');
     }

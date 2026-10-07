@@ -1,18 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:PiliPlus/http/loading_state.dart';
-import 'package:PiliPlus/http/search.dart';
-import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_status.dart';
 import 'package:PiliPlus/services/lan_cast/discovery.dart';
+import 'package:PiliPlus/services/lan_cast/navigation.dart';
 import 'package:PiliPlus/services/lan_cast/permission.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/server.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/services/lan_cast/store.dart';
-import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -46,6 +43,8 @@ class LanCastPagePlayback implements LanCastPlayback {
       volume: ((player?.volume.value ?? 1) * 100).clamp(0, 100),
       speed: (player?.playbackSpeed ?? 1).clamp(0.25, 4),
       isLive: _media?.isLive ?? false,
+      fullscreen: player?.isFullScreen.value ?? false,
+      canFullscreen: true,
       error: _media != null && !_loading && player == null
           ? '接收端已关闭或切换视频'
           : null,
@@ -70,49 +69,15 @@ class LanCastPagePlayback implements LanCastPlayback {
       if (previous?.isFullScreen.value == true) {
         await previous!.triggerFullScreen(status: false);
       }
-      if (media.isLive) {
-        if (Get.currentRoute == '/liveRoom' &&
-            previous?.castMediaKey == media.key &&
-            previous?.dataStatus.value == DataStatus.loaded) {
-          _player = previous;
-          await previous!.play();
-          return;
-        }
-        PageUtils.toLiveRoom(
-          media.roomId,
-          off: Get.currentRoute == '/liveRoom',
-          lanCast: true,
-        );
-      } else {
-        final extra = <String, dynamic>{'lanCast': true};
-        if (media.kind != 'ugc') {
-          final result =
-              await (media.kind == 'pgc'
-                      ? SearchHttp.pgcInfo(epId: media.epId)
-                      : SearchHttp.pugvInfo(
-                          epId: media.epId,
-                          seasonId: media.seasonId,
-                        ))
-                  .timeout(const Duration(seconds: 8));
-          if (result case Success(:final response)) {
-            extra['pgcItem'] = response;
-          } else {
-            throw const LanCastException('接收端无法获取节目详情，请检查登录状态', 422);
-          }
-        }
-        PageUtils.toVideoPage(
-          videoType: VideoType.values.byName(media.kind),
-          aid: media.aid,
-          bvid: media.bvid,
-          cid: media.cid!,
-          epId: media.epId,
-          seasonId: media.seasonId,
-          pgcType: media.pgcType,
-          title: media.title,
-          progress: media.position,
-          extraArguments: extra,
-        );
+      if (media.isLive &&
+          Get.currentRoute == '/liveRoom' &&
+          previous?.castMediaKey == media.key &&
+          previous?.dataStatus.value == DataStatus.loaded) {
+        _player = previous;
+        await previous!.play();
+        return;
       }
+      await openLanCastVideo(media, receiving: true);
       while (DateTime.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         final player = PlPlayerController.instance;
@@ -154,6 +119,8 @@ class LanCastPagePlayback implements LanCastPlayback {
         await player.setVolume(value! / 100);
       case 'speed':
         await player.setPlaybackSpeed(value!);
+      case 'fullscreen':
+        await player.triggerFullScreen(status: value == 1);
     }
   }
 

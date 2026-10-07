@@ -16,6 +16,7 @@ class LanCastSession extends ChangeNotifier {
   LanCastDevice? device;
   LanCastStatus status = const LanCastStatus();
   String? mediaKey;
+  LanCastMedia? media;
   String? error;
   bool busy = false;
   bool online = false;
@@ -62,6 +63,7 @@ class LanCastSession extends ChangeNotifier {
       _client = client;
       device = verified;
       mediaKey = media.key;
+      this.media = media;
       status = state;
       online = true;
       _generation++;
@@ -157,6 +159,7 @@ class LanCastSession extends ChangeNotifier {
     _poll?.cancel();
     _client = null;
     device = null;
+    media = null;
     online = false;
     notifyListeners();
     try {
@@ -179,6 +182,7 @@ class LanCastSession extends ChangeNotifier {
     _client?.close();
     _client = null;
     device = null;
+    media = null;
     online = false;
     notifyListeners();
   }

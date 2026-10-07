@@ -371,7 +371,9 @@ class VideoDetailController extends GetxController
   void onInit() {
     super.onInit();
     args = Get.arguments;
-    if (args['lanCast'] == true) _autoPlay.value = true;
+    if (args['lanCast'] == true || args['lanCastResume'] == true) {
+      _autoPlay.value = true;
+    }
     videoType = args['videoType'];
     if (videoType == VideoType.pgc) {
       if (!isLoginVideo) {

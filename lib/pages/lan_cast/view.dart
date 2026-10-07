@@ -4,6 +4,7 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/services/lan_cast/client.dart';
 import 'package:PiliPlus/services/lan_cast/discovery.dart';
+import 'package:PiliPlus/services/lan_cast/navigation.dart';
 import 'package:PiliPlus/services/lan_cast/permission.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
@@ -129,6 +130,7 @@ class _LanCastPageState extends State<LanCastPage> {
         return;
       }
       await player.attachCast(_session);
+      LanCastNavigation.instance.rememberControlRoute(media.key);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (wasPlaying &&
@@ -191,7 +193,7 @@ class _LanCastPageState extends State<LanCastPage> {
                       onPressed: busy
                           ? null
                           : () async {
-                              await widget.player!.disconnectCast();
+                              await _session.disconnect();
                               if (context.mounted) Navigator.pop(context);
                             },
                       child: const Text('断开推送（保留配对）'),

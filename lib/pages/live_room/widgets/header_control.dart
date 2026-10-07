@@ -5,8 +5,9 @@ import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/draggable_sheet/dyn.dart';
 import 'package:PiliPlus/common/widgets/marquee.dart';
 import 'package:PiliPlus/models/common/video/live_quality.dart';
-import 'package:PiliPlus/pages/live_room/controller.dart';
+import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
 import 'package:PiliPlus/pages/lan_cast/launch.dart';
+import 'package:PiliPlus/pages/live_room/controller.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
 import 'package:PiliPlus/pages/video/widgets/header_control.dart';
@@ -163,6 +164,10 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
               dlnaUrl: () async => plPlayerController.dataSource.videoSource,
             ),
             icon: const Icon(Icons.cast, size: 18, color: Colors.white),
+          ),
+          LanCastFullscreenButton(
+            player: plPlayerController,
+            height: btnHeight,
           ),
           if (isFullScreen || PlatformUtils.isDesktop)
             ComBtn(

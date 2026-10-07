@@ -367,9 +367,9 @@ mixin HeaderMixin<T extends StatefulWidget> on State<T> {
                       padding: sliderPadding,
                       child: Slider(
                         min: 0.5,
-                        max: 2.5,
+                        max: 6,
                         value: DanmakuOptions.danmakuFontScale,
-                        divisions: 200,
+                        divisions: 550,
                         label:
                             '${(DanmakuOptions.danmakuFontScale * 100).toStringAsFixed(1)}%',
                         onChanged: updateFontSize,
@@ -388,9 +388,9 @@ mixin HeaderMixin<T extends StatefulWidget> on State<T> {
                       padding: sliderPadding,
                       child: Slider(
                         min: 0.5,
-                        max: 2.5,
+                        max: 6,
                         value: DanmakuOptions.danmakuFontScaleFS,
-                        divisions: 200,
+                        divisions: 550,
                         label:
                             '${(DanmakuOptions.danmakuFontScaleFS * 100).toStringAsFixed(1)}%',
                         onChanged: updateFontSizeFS,

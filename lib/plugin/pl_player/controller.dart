@@ -30,6 +30,7 @@ import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
+import 'package:PiliPlus/services/lan_cast/navigation.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/services/service_locator.dart';
@@ -108,6 +109,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       isLive ? 'live:$liveRoomId' : '${_videoType.name}:$_aid:$cid:$_epid';
 
   Future<void> attachCast(LanCastSession session) async {
+    if (identical(_castSession, session)) {
+      _syncCast();
+      return;
+    }
+    if (isCasting) _detachCast(restorePosition: false);
     _castSession = session;
     _localVolume = volume.value;
     session.addListener(_syncCast);
@@ -175,6 +181,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _detachCast();
     await session.disconnect();
   }
+
+  /// The app session stays alive when its video page is closed or replaced.
+  void detachCast() => _detachCast(restorePosition: false);
 
   PlayerStatus playerStatus = .paused;
 
@@ -919,10 +928,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         onInit?.call();
         return;
       }
-      // A new local video ends this cast; it must not silently control the old one.
-      _detachCast(restorePosition: false);
-      LanCastSession.instance.disconnect();
+      detachCast();
+      LanCastNavigation.instance.invalidateCurrentControlRoute();
     }
+    final session = LanCastSession.instance;
+    final resumeCast =
+        dataSource is NetworkSource &&
+        session.connected &&
+        session.mediaKey == incomingKey;
     try {
       _processing = true;
       sourceGeneration++;
@@ -935,7 +948,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.height = height;
       _frameRate = frameRate;
       this.dataSource = dataSource;
-      _autoPlay = autoplay;
+      _autoPlay = autoplay && !resumeCast;
       // 初始化数据加载状态
       dataStatus.value = DataStatus.loading;
       // 初始化全屏方向
@@ -975,11 +988,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
       dataStatus.value = .loaded;
 
-      if (autoFullScreenFlag && autoEnterFullScreen) {
+      if (!resumeCast && autoFullScreenFlag && autoEnterFullScreen) {
         triggerFullScreen(status: true);
       }
 
       await _initializePlayer();
+      if (resumeCast && session.connected && session.mediaKey == incomingKey) {
+        await attachCast(session);
+      }
       onInit?.call();
     } catch (err, stackTrace) {
       dataStatus.value = DataStatus.error;
@@ -1940,8 +1956,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     _playerCount = 0;
     if (isCasting) {
-      _detachCast(restorePosition: false);
-      LanCastSession.instance.disconnect();
+      detachCast();
     }
     if (removeSafeArea) {
       showSystemBar();
@@ -2122,7 +2137,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   void onPopInvokedWithResult(bool didPop, Object? result) {
     if (didPop) {
       if (playerStatus.isPlaying) {
-        pause();
+        pause(localOnly: true);
       }
 
       setPlayCallBack(null);

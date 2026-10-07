@@ -118,6 +118,8 @@ class LanCastStatus {
     this.isLive = false,
     this.error,
     this.mediaKey = '',
+    this.fullscreen = false,
+    this.canFullscreen = false,
   });
 
   final String title;
@@ -130,6 +132,8 @@ class LanCastStatus {
   final bool isLive;
   final String? error;
   final String mediaKey;
+  final bool fullscreen;
+  final bool canFullscreen;
 
   factory LanCastStatus.fromJson(Map<String, dynamic> json) => LanCastStatus(
     title: json['title'] as String,
@@ -142,6 +146,8 @@ class LanCastStatus {
     isLive: json['isLive'] as bool,
     error: json['error'] as String?,
     mediaKey: json['mediaKey'] as String? ?? '',
+    fullscreen: json['fullscreen'] as bool? ?? false,
+    canFullscreen: json['canFullscreen'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -155,6 +161,8 @@ class LanCastStatus {
     'isLive': isLive,
     'error': error,
     'mediaKey': mediaKey,
+    'fullscreen': fullscreen,
+    'canFullscreen': canFullscreen,
   };
 }
 
