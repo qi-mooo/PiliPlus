@@ -17,6 +17,7 @@ class _Playback implements LanCastPlayback {
   Completer<void>? loadStarted;
   bool playing = false;
   bool fullscreen = false;
+  bool completed = false;
   int stopped = 0;
   Completer<void>? loading;
   bool failLoad = false;
@@ -25,7 +26,7 @@ class _Playback implements LanCastPlayback {
   LanCastStatus get status => LanCastStatus(
     title: media?.title ?? '',
     mediaKey: media?.key ?? '',
-    position: media?.position ?? 0,
+    position: completed ? 120000 : media?.position ?? 0,
     duration: 120000,
     playing: playing,
     isLive: media?.isLive ?? false,
@@ -46,6 +47,7 @@ class _Playback implements LanCastPlayback {
       throw StateError('Failed after closing previous video');
     }
     media = value;
+    completed = false;
     playing = true;
   }
 
@@ -373,6 +375,31 @@ void main() {
       await session.connect(await client.info(), server.pairingCode, _media);
       return session;
     }
+
+    test('completion keeps the receiver connected and the next selected video starts immediately', () async {
+      final session = await connectedSession();
+      final device = session.device;
+      playback
+        ..playing = false
+        ..completed = true;
+      for (var i = 0; i < 3; i++) {
+        await session.refresh();
+        expect(session.connected, isTrue);
+        expect(session.status.playing, isFalse);
+        expect(session.status.position, session.status.duration);
+        expect(session.error, isNull);
+      }
+      const next = LanCastMedia(title: '播完后点选的新视频', aid: 100, cid: 200);
+      expect(await session.replaceMedia(next), isTrue);
+      expect(session.device, same(device));
+      expect(session.connected, isTrue);
+      expect(session.status.mediaKey, next.key);
+      expect(session.status.playing, isTrue);
+      expect(session.status.position, 0);
+      expect(playback.loads.map((e) => e.key), [_media.key, next.key]);
+      expect(playback.stopped, 0);
+      expect(server.pairingCode, isNull);
+    });
 
     test(
       'switches video, episode and live using the same pairing and connection',

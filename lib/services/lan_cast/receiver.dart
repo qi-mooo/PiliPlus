@@ -75,7 +75,8 @@ class LanCastPagePlayback implements LanCastPlayback {
           previous?.castMediaKey == media.key &&
           previous?.dataStatus.value == DataStatus.loaded) {
         _player = previous;
-        await previous!.play();
+        previous!.receivingCastMediaKey = media.key;
+        await previous.play();
         if (fullscreen != null) {
           await previous.triggerFullScreen(status: fullscreen);
         }
@@ -95,6 +96,7 @@ class LanCastPagePlayback implements LanCastPlayback {
         if (player.dataStatus.value == DataStatus.error) break;
         if (player.dataStatus.value != DataStatus.loaded) continue;
         _player = player;
+        player.receivingCastMediaKey = media.key;
         if (!media.isLive) {
           await player.seek(Duration(milliseconds: media.position));
           await player.setPlaybackSpeed(media.speed);
@@ -133,7 +135,9 @@ class LanCastPagePlayback implements LanCastPlayback {
 
   @override
   Future<void> stop() async {
-    await _current?.pause();
+    final player = _current;
+    _player?.receivingCastMediaKey = null;
+    await player?.pause();
     _media = null;
     _player = null;
   }

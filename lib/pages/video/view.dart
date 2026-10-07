@@ -271,6 +271,9 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       /// 顺序播放 列表循环
       if (shutdownTimerService.isWaiting) {
         shutdownTimerService.handleWaiting();
+      } else if (plPlayerController!.isReceivingCast) {
+        // Keep this video and the cast connection ready for the sender's choice.
+        return;
       } else {
         switch (plPlayerController!.playRepeat) {
           case PlayRepeat.singleCycle:

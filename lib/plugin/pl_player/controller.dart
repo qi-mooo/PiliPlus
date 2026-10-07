@@ -84,6 +84,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   LanCastSession? _castSession;
   final RxString castDevice = ''.obs;
   bool get isCasting => _castSession != null;
+  String? receivingCastMediaKey;
+  bool get isReceivingCast =>
+      !isCasting && receivingCastMediaKey == castMediaKey;
   int? liveRoomId;
   String mediaTitle = 'PiliPlus 视频';
   int sourceGeneration = 0;
@@ -964,6 +967,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     final incomingKey = isLive
         ? 'live:$liveRoomId'
         : '${(videoType ?? VideoType.ugc).name}:$aid:$cid:$epid';
+    if (dataSource is! NetworkSource || receivingCastMediaKey != incomingKey) {
+      receivingCastMediaKey = null;
+    }
     final session = _castSession ?? LanCastSession.instance;
     if (isCasting) {
       if (dataSource is NetworkSource && incomingKey == session.mediaKey) {
