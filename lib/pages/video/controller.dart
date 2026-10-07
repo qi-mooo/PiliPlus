@@ -54,6 +54,7 @@ import 'package:PiliPlus/plugin/pl_player/models/heart_beat_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
+import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
@@ -395,6 +396,9 @@ class VideoDetailController extends GetxController
 
     sourceType = args['sourceType'] ?? SourceType.normal;
     isFileSource = sourceType == SourceType.file;
+    if (!isFileSource && LanCastSession.instance.connected) {
+      _autoPlay.value = true;
+    }
     isPlayAll = sourceType != SourceType.normal && !isFileSource;
     if (isFileSource) {
       initFileSource(args['entry']);
@@ -738,6 +742,7 @@ class VideoDetailController extends GetxController
 
   Future<void>? initPlayerIfNeeded(bool autoFullScreenFlag) {
     if (_autoPlay.value ||
+        (!isFileSource && LanCastSession.instance.connected) ||
         (plPlayerController.preInitPlayer && !plPlayerController.processing) &&
             (isFileSource
                 ? true
@@ -1604,7 +1609,21 @@ class VideoDetailController extends GetxController
     );
   }
 
-  void onCast() {
+  Future<void> onCast() async {
+    if (!isFileSource && LanCastSession.instance.connected) {
+      if (isQuerying || videoUrl == null) {
+        SmartDialog.showToast('请等待当前视频加载完成');
+        return;
+      }
+      final mediaKey =
+          '${videoType.name}:$aid:${cid.value}:${isUgc ? null : epId}';
+      if (plPlayerController.castMediaKey != mediaKey ||
+          plPlayerController.videoPlayerController == null) {
+        await playerInit();
+        return;
+      }
+      if (isClosed) return;
+    }
     String? title;
     try {
       title = isUgc

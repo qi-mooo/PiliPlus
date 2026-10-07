@@ -144,6 +144,21 @@ class _LanCastPageState extends State<LanCastPage> {
     }
   }
 
+  Future<void> _pushCurrent() async {
+    setState(() {
+      _connecting = true;
+      _error = null;
+    });
+    try {
+      await widget.player!.castToConnectedDevice();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.player == null) return const LanCastReceiverPage();
@@ -184,6 +199,15 @@ class _LanCastPageState extends State<LanCastPage> {
                       title: Text(_session.device!.name),
                       subtitle: Text(_session.status.title),
                     ),
+                    if (widget.player!.dataSource is NetworkSource &&
+                        (_session.mediaKey != widget.player!.castMediaKey ||
+                            !widget.player!.isCasting ||
+                            _session.error != null))
+                      FilledButton.icon(
+                        onPressed: busy ? null : _pushCurrent,
+                        icon: const Icon(Icons.cast),
+                        label: const Text('将当前视频投到此设备'),
+                      ),
                     if (!_session.online)
                       TextButton(
                         onPressed: _session.refresh,

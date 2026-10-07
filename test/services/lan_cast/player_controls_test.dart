@@ -1,5 +1,6 @@
 import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_pause_btn.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
@@ -10,9 +11,25 @@ import 'package:material_ui/material_ui.dart';
 
 class _Session extends LanCastSession {
   final commands = <(String, double?)>[];
+  final loads = <LanCastMedia>[];
   bool active = true;
   @override
   bool get connected => active;
+  @override
+  Future<bool> replaceMedia(LanCastMedia next) async {
+    loads.add(next);
+    media = next;
+    mediaKey = next.key;
+    status = LanCastStatus(
+      mediaKey: next.key,
+      title: next.title,
+      playing: true,
+      isLive: next.isLive,
+    );
+    notifyListeners();
+    return true;
+  }
+
   @override
   Future<void> command(String action, [double? value]) async {
     commands.add((action, value));
@@ -130,6 +147,21 @@ void main() {
       await player.attachCast(session);
       expect(player.positionInMilliseconds, 80000);
       expect(session.commands.length, beforeLeaving);
+      player
+        ..detachCast()
+        ..isLive = true
+        ..liveRoomId = 1234
+        ..mediaTitle = '新直播'
+        ..dataSource = NetworkSource(
+          videoSource: 'https://example.com/live',
+          audioSource: null,
+        );
+      await player.castToConnectedDevice(session: session);
+      expect(session.loads.single.key, 'live:1234');
+      expect(player.isCasting, isTrue);
+      expect(session.connected, isTrue);
+      expect(session.commands.length, beforeLeaving);
+      expect(player.videoPlayerController, isNull);
       await player.disconnectCast();
       expect(player.isCasting, isFalse);
       expect(player.playerStatus.isPaused, isTrue);

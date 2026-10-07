@@ -68,8 +68,15 @@ class LanCastNavigation extends NavigatorObserver with ChangeNotifier {
   bool _scheduled = false;
   bool _disposed = false;
 
-  void rememberControlRoute(String key) {
-    _controlRoute = _routes.whereType<PageRoute<dynamic>>().lastOrNull;
+  Route<dynamic>? get currentPageRoute {
+    final pages = _routes.whereType<PageRoute<dynamic>>();
+    return pages.where((route) => route.isCurrent).lastOrNull ??
+        pages.where((route) => route.isActive).lastOrNull;
+  }
+
+  void rememberControlRoute(String key, {Route<dynamic>? route}) {
+    final page = route ?? currentPageRoute;
+    _controlRoute = _routes.contains(page) ? page : null;
     _controlKey = key;
     _changed();
   }

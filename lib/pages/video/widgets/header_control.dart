@@ -25,7 +25,6 @@ import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
-import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
 import 'package:PiliPlus/pages/setting/widgets/popup_item.dart';
@@ -1817,12 +1816,6 @@ class HeaderControlState extends State<HeaderControl>
                         color: Colors.white,
                       ),
                     ),
-                  ),
-                  LanCastFullscreenButton(
-                    player: plPlayerController,
-                    width: btnWidth,
-                    height: btnHeight,
-                    style: btnStyle,
                   ),
                   if (!isFSOrPip && videoDetailCtr.isUgc)
                     SizedBox(

@@ -13,11 +13,14 @@ import 'package:hive_ce/hive.dart';
 class _Playback implements LanCastPlayback {
   LanCastMedia? media;
   final commands = <(String, double?)>[];
+  final loads = <LanCastMedia>[];
+  Completer<void>? loadStarted;
   bool playing = false;
   bool fullscreen = false;
   int stopped = 0;
   Completer<void>? loading;
   bool failLoad = false;
+  bool failAfterLoad = false;
   @override
   LanCastStatus get status => LanCastStatus(
     title: media?.title ?? '',
@@ -32,8 +35,16 @@ class _Playback implements LanCastPlayback {
   );
   @override
   Future<void> load(LanCastMedia value) async {
+    loads.add(value);
+    loadStarted?.complete();
+    loadStarted = null;
     if (failLoad) throw StateError('Playback failed');
     await loading?.future;
+    if (failAfterLoad) {
+      failAfterLoad = false;
+      media = null;
+      throw StateError('Failed after closing previous video');
+    }
     media = value;
     playing = true;
   }
@@ -354,6 +365,139 @@ void main() {
         expect(session.connected, isFalse);
       },
     );
+
+    Future<LanCastSession> connectedSession() async {
+      final session = LanCastSession(trustStore: await _store());
+      addTearDown(session.dispose);
+      server.beginPairing();
+      await session.connect(await client.info(), server.pairingCode, _media);
+      return session;
+    }
+
+    test(
+      'switches video, episode and live using the same pairing and connection',
+      () async {
+        final session = await connectedSession();
+        final trust = jsonEncode(session.store.targets);
+        const episode = LanCastMedia(
+          title: '下一集',
+          kind: 'pgc',
+          aid: 10,
+          cid: 20,
+          epId: 30,
+          position: 8000,
+          speed: 2,
+        );
+        expect(await session.replaceMedia(episode), isTrue);
+        expect(session.status.position, 8000);
+        expect(session.status.speed, 2);
+        await session.connect(session.device!, null, _live);
+        expect(session.mediaKey, _live.key);
+        expect(session.status.isLive, isTrue);
+        expect(playback.loads.map((e) => e.key), [
+          _media.key,
+          episode.key,
+          _live.key,
+        ]);
+        expect(playback.stopped, 0);
+        expect(server.paired, isTrue);
+        expect(jsonEncode(session.store.targets), trust);
+        await session.replaceMedia(_live);
+        expect(
+          playback.loads.length,
+          3,
+        ); // Returning to controls must not reload.
+      },
+    );
+
+    test(
+      'rapid selections supersede queued media and stale gestures',
+      () async {
+        final session = await connectedSession();
+        playback.loading = Completer<void>();
+        final started = playback.loadStarted = Completer<void>();
+        final first = session.replaceMedia(_live);
+        await started.future;
+        const middle = LanCastMedia(title: '中间视频', aid: 10, cid: 20);
+        final second = session.replaceMedia(middle);
+        final stalePause = session.command('pause');
+        final last = session.replaceMedia(_media);
+        await session.refresh();
+        expect(session.connected, isTrue);
+        expect(session.busy, isTrue);
+        playback.loading!.complete();
+        expect(await first, isFalse);
+        expect(await second, isFalse);
+        expect(await last, isTrue);
+        await stalePause;
+        expect(playback.loads.map((e) => e.key), [
+          _media.key,
+          _live.key,
+          _media.key,
+        ]);
+        expect(playback.commands, isEmpty);
+        expect(playback.playing, isTrue);
+        expect(playback.stopped, 0);
+        expect(session.mediaKey, _media.key);
+        expect(session.busy, isFalse);
+      },
+    );
+
+    test(
+      'failed switching can retry without unpairing or disconnecting',
+      () async {
+        final session = await connectedSession();
+        playback.failLoad = true;
+        await expectLater(session.replaceMedia(_live), _status(500));
+        playback.media = null; // Receiver may have already closed its old page.
+        await session.refresh();
+        expect(session.connected, isTrue);
+        expect(session.busy, isFalse);
+        expect(session.error, isNotNull);
+        playback.failLoad = false;
+        expect(await session.replaceMedia(_live), isTrue);
+        expect(session.error, isNull);
+        expect(session.status.isLive, isTrue);
+        expect(playback.stopped, 0);
+      },
+    );
+
+    test('disconnect during a switch cannot restore the old session', () async {
+      final session = await connectedSession();
+      playback.loading = Completer<void>();
+      final started = playback.loadStarted = Completer<void>();
+      final switching = session.replaceMedia(_live);
+      await started.future;
+      final disconnecting = session.disconnect();
+      playback.loading!.complete();
+      expect(await switching, isFalse);
+      await disconnecting;
+      expect(session.connected, isFalse);
+      expect(session.media, isNull);
+      expect(playback.playing, isFalse);
+    });
+
+    test('a superseded failed switch reloads the previous video when selected again', () async {
+      final session = await connectedSession();
+      playback
+        ..loading = Completer<void>()
+        ..failAfterLoad = true;
+      final started = playback.loadStarted = Completer<void>();
+      final failed = session.replaceMedia(_live);
+      await started.future;
+      final returning = session.replaceMedia(_media);
+      playback.loading!.complete();
+      expect(await failed, isFalse);
+      expect(await returning, isTrue);
+      expect(playback.loads.map((e) => e.key), [
+        _media.key,
+        _live.key,
+        _media.key,
+      ]);
+      expect(session.status.mediaKey, _media.key);
+      expect(session.online, isTrue);
+      expect(session.connected, isTrue);
+    });
   });
 
   test(

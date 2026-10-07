@@ -60,9 +60,13 @@ void main() {
       unawaited(key.currentState!.push(_page('原视频页')));
       await tester.pumpAndSettle();
       navigation.rememberControlRoute(_media.key);
+      final controlRoute = navigation.currentPageRoute;
       await tester.pumpAndSettle();
       expect(find.text('返回投屏控制'), findsNothing);
       unawaited(key.currentState!.push(_page('其他页面')));
+      await tester.pumpAndSettle();
+      // A delayed cast response must remember its originating video page.
+      navigation.rememberControlRoute(_media.key, route: controlRoute);
       await tester.pumpAndSettle();
       expect(find.text('返回投屏控制'), findsOneWidget);
       final beforeDrag = tester.getTopLeft(find.text('返回投屏控制'));

@@ -28,6 +28,7 @@ import 'package:PiliPlus/models_new/video/video_detail/episode.dart' as ugc;
 import 'package:PiliPlus/models_new/video/video_detail/ugc_season.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
+import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
 import 'package:PiliPlus/pages/live_room/widgets/bottom_control.dart'
     as live_bottom;
 import 'package:PiliPlus/pages/video/controller.dart';
@@ -1803,6 +1804,33 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
             () => mounted,
           ),
 
+        // Remote fullscreen mirrors the lock button on the opposite side.
+        ViewSafeArea(
+          left: false,
+          right: !plPlayerController.removeSafeArea,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FractionalTranslation(
+              translation: const Offset(-1, -0.4),
+              child: Obx(
+                () => Offstage(
+                  offstage:
+                      !plPlayerController.showControls.value ||
+                      plPlayerController.controlsLock.value ||
+                      plPlayerController.castDevice.value.isEmpty,
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0x45000000),
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    child: LanCastFullscreenButton(player: plPlayerController),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+
         if (isFullScreen || plPlayerController.isDesktopPip) ...[
           // 锁
           if (plPlayerController.showFsLockBtn)
@@ -1859,7 +1887,9 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                   child: FractionalTranslation(
                     translation: const Offset(-1, -0.4),
                     child: Offstage(
-                      offstage: !plPlayerController.showControls.value,
+                      offstage:
+                          !plPlayerController.showControls.value ||
+                          plPlayerController.castDevice.value.isNotEmpty,
                       child: DecoratedBox(
                         decoration: const BoxDecoration(
                           color: Color(0x45000000),

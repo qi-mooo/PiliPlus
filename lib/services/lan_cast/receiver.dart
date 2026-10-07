@@ -59,6 +59,7 @@ class LanCastPagePlayback implements LanCastPlayback {
     if (Get.key.currentState == null) {
       throw const LanCastException('接收端尚未就绪', 503);
     }
+    final fullscreen = _current?.isFullScreen.value;
     _loading = true;
     _media = media;
     _player = null;
@@ -75,6 +76,9 @@ class LanCastPagePlayback implements LanCastPlayback {
           previous?.dataStatus.value == DataStatus.loaded) {
         _player = previous;
         await previous!.play();
+        if (fullscreen != null) {
+          await previous.triggerFullScreen(status: fullscreen);
+        }
         return;
       }
       await openLanCastVideo(media, receiving: true);
@@ -96,6 +100,9 @@ class LanCastPagePlayback implements LanCastPlayback {
           await player.setPlaybackSpeed(media.speed);
         }
         await player.play();
+        if (fullscreen != null) {
+          await player.triggerFullScreen(status: fullscreen);
+        }
         return;
       }
       throw const LanCastException('接收端未能打开视频，请检查该设备的登录状态和播放权限', 422);

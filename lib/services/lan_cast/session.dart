@@ -24,6 +24,9 @@ class LanCastSession extends ChangeNotifier {
   bool _polling = false;
   int _generation = 0;
   bool _disposed = false;
+  int _loadRevision = 0;
+  int _pendingLoads = 0;
+  bool _loadFailed = false;
   Future<void> _commands = Future.value();
   bool get connected => _client != null;
 
@@ -32,6 +35,10 @@ class LanCastSession extends ChangeNotifier {
     String? code,
     LanCastMedia media,
   ) async {
+    if (connected && device?.id == target.id) {
+      await replaceMedia(media);
+      return;
+    }
     if (busy || connected) throw const LanCastException('请先断开当前推送');
     if (target.id == store.id) throw const LanCastException('不能向本机推送');
     final client = LanCastClient(target.uri);
@@ -66,6 +73,7 @@ class LanCastSession extends ChangeNotifier {
       this.media = media;
       status = state;
       online = true;
+      _loadFailed = false;
       _generation++;
       _poll = Timer.periodic(
         const Duration(seconds: 1),
@@ -88,9 +96,62 @@ class LanCastSession extends ChangeNotifier {
     }
   }
 
+  /// Reuse the authenticated connection; newer selections supersede queued ones.
+  Future<bool> replaceMedia(LanCastMedia next) {
+    final client = _client;
+    if (client == null) return Future.value(false);
+    final revision = ++_loadRevision;
+    _generation++;
+    _pendingLoads++;
+    busy = true;
+    notifyListeners();
+    final result = _commands
+        .then((_) async {
+          if (_client != client || revision != _loadRevision) return false;
+          try {
+            if (next.key == mediaKey && online && error == null) return true;
+            final state = await client.load(next);
+            if (_client != client) return false;
+            if (state.mediaKey != next.key || state.error != null) {
+              throw LanCastException(state.error ?? '接收端未打开指定视频', 422);
+            }
+            media = next;
+            mediaKey = next.key;
+            status = state;
+            online = true;
+            error = null;
+            _loadFailed = false;
+            return revision == _loadRevision;
+          } catch (e) {
+            if (_client != client) return false;
+            online = false;
+            _loadFailed = true;
+            if (revision != _loadRevision) return false;
+            error = e.toString();
+            if (e is LanCastException &&
+                e.statusCode == 401 &&
+                device != null) {
+              await store.remove('targets', device!.id);
+            }
+            if (e is LanCastException && [401, 409].contains(e.statusCode)) {
+              forget();
+            }
+            rethrow;
+          }
+        })
+        .whenComplete(() {
+          _pendingLoads--;
+          if (_client == client) busy = _pendingLoads > 0;
+          notifyListeners();
+        });
+    // A failed video can be retried without poisoning subsequent queue entries.
+    _commands = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
   Future<void> refresh() async {
     final client = _client;
-    if (client == null || busy || _polling) return;
+    if (client == null || busy || _pendingLoads > 0 || _polling) return;
     _polling = true;
     final generation = _generation;
     try {
@@ -99,8 +160,13 @@ class LanCastSession extends ChangeNotifier {
       online = true;
       error = state.error;
       if (state.mediaKey != mediaKey || state.error != null) {
-        error ??= '接收端已切换视频，推送已结束';
-        forget();
+        if (_loadFailed) {
+          online = false;
+          error ??= '接收端未打开视频，请重试推送';
+        } else {
+          error ??= '接收端已切换视频，推送已结束';
+          forget();
+        }
       } else {
         status = state;
       }
@@ -122,18 +188,21 @@ class LanCastSession extends ChangeNotifier {
   Future<void> command(String action, [double? value]) {
     final client = _client;
     if (client == null) return Future.value();
+    final revision = _loadRevision;
     final result = _commands.then((_) async {
-      if (_client != client) return;
+      if (_client != client || revision != _loadRevision || _pendingLoads > 0) {
+        return;
+      }
       busy = true;
       _generation++;
       try {
         final state = await client.command(action, value);
-        if (_client != client) return;
+        if (_client != client || revision != _loadRevision) return;
         status = state;
         online = true;
         error = null;
       } catch (e) {
-        if (_client != client) return;
+        if (_client != client || revision != _loadRevision) return;
         error = e.toString();
         online = false;
         if (e is LanCastException && e.statusCode == 401 && device != null) {
@@ -143,7 +212,7 @@ class LanCastSession extends ChangeNotifier {
           forget();
         }
       } finally {
-        if (_client == client) busy = false;
+        if (_client == client) busy = _pendingLoads > 0;
         notifyListeners();
       }
     });

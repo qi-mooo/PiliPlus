@@ -185,6 +185,47 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// The app session stays alive when its video page is closed or replaced.
   void detachCast() => _detachCast(restorePosition: false);
 
+  Future<void> castToConnectedDevice({
+    LanCastSession? session,
+    int? startPosition,
+    Route<dynamic>? controlRoute,
+  }) async {
+    session ??= _castSession ?? LanCastSession.instance;
+    if (!session.connected || dataSource is! NetworkSource) return;
+    controlRoute ??= LanCastNavigation.instance.currentPageRoute;
+    final media = startPosition == null
+        ? castMedia
+        : LanCastMedia.fromJson({
+            ...castMedia.toJson(),
+            'position': startPosition,
+          });
+    final generation = sourceGeneration;
+    await pause(localOnly: true);
+    if (_playerCount == 0 || sourceGeneration != generation) return;
+    if (!await session.replaceMedia(media)) return;
+    if (_playerCount == 0 ||
+        sourceGeneration != generation ||
+        castMediaKey != media.key ||
+        !session.connected) {
+      return;
+    }
+    await attachCast(session);
+    _rememberCastRoute(controlRoute);
+  }
+
+  void _rememberCastRoute([Route<dynamic>? route]) {
+    route ??= LanCastNavigation.instance.currentPageRoute;
+    final generation = sourceGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_playerCount > 0 && sourceGeneration == generation && isCasting) {
+        LanCastNavigation.instance.rememberControlRoute(
+          castMediaKey,
+          route: route,
+        );
+      }
+    });
+  }
+
   PlayerStatus playerStatus = .paused;
 
   final Rx<DataStatus> dataStatus = Rx(.none);
@@ -923,22 +964,21 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     final incomingKey = isLive
         ? 'live:$liveRoomId'
         : '${(videoType ?? VideoType.ugc).name}:$aid:$cid:$epid';
+    final session = _castSession ?? LanCastSession.instance;
     if (isCasting) {
-      if (incomingKey == _castSession!.mediaKey) {
+      if (dataSource is NetworkSource && incomingKey == session.mediaKey) {
+        _rememberCastRoute();
         onInit?.call();
         return;
       }
       detachCast();
       LanCastNavigation.instance.invalidateCurrentControlRoute();
     }
-    final session = LanCastSession.instance;
-    final resumeCast =
-        dataSource is NetworkSource &&
-        session.connected &&
-        session.mediaKey == incomingKey;
+    final continueCast = dataSource is NetworkSource && session.connected;
+    final controlRoute = LanCastNavigation.instance.currentPageRoute;
+    final generation = ++sourceGeneration;
     try {
       _processing = true;
-      sourceGeneration++;
       this.isLive = isLive;
       this.liveRoomId = liveRoomId;
       if (mediaTitle != null) this.mediaTitle = mediaTitle;
@@ -948,7 +988,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.height = height;
       _frameRate = frameRate;
       this.dataSource = dataSource;
-      _autoPlay = autoplay && !resumeCast;
+      _autoPlay = autoplay && !continueCast;
       // 初始化数据加载状态
       dataStatus.value = DataStatus.loading;
       // 初始化全屏方向
@@ -968,12 +1008,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           _videoPlayerController!.state.playing) {
         await pause(notify: false);
       }
+      if (sourceGeneration != generation) return;
 
       if (_playerCount == 0) {
         return;
       }
       // 配置Player 音轨、字幕等等
       await _createVideoController(dataSource, seekTo, volume);
+      if (sourceGeneration != generation) return;
 
       if (_playerCount == 0) {
         _removeListeners();
@@ -988,23 +1030,34 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
       dataStatus.value = .loaded;
 
-      if (!resumeCast && autoFullScreenFlag && autoEnterFullScreen) {
+      if (!continueCast && autoFullScreenFlag && autoEnterFullScreen) {
         triggerFullScreen(status: true);
       }
 
       await _initializePlayer();
-      if (resumeCast && session.connected && session.mediaKey == incomingKey) {
-        await attachCast(session);
+      if (sourceGeneration != generation) return;
+      if (continueCast && session.connected && castMediaKey == incomingKey) {
+        try {
+          await castToConnectedDevice(
+            session: session,
+            startPosition: seekTo?.inMilliseconds ?? 0,
+            controlRoute: controlRoute,
+          );
+        } catch (e) {
+          SmartDialog.showToast('切换投屏失败：$e');
+        }
       }
+      if (sourceGeneration != generation || _playerCount == 0) return;
       onInit?.call();
     } catch (err, stackTrace) {
+      if (sourceGeneration != generation) return;
       dataStatus.value = DataStatus.error;
       if (kDebugMode) {
         debugPrint(stackTrace.toString());
         debugPrint('plPlayer err:  $err');
       }
     } finally {
-      _processing = false;
+      if (sourceGeneration == generation) _processing = false;
     }
   }
 
@@ -1499,6 +1552,19 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     if (_castSession case final session?) return session.command('play');
+
+    // A play tap during a cast transition must not start a second local player.
+    final session = LanCastSession.instance;
+    if (session.connected && dataSource is NetworkSource) {
+      if (processing || dataStatus.value == DataStatus.none) return;
+      try {
+        await castToConnectedDevice(session: session);
+        if (isCasting) await session.command('play');
+      } catch (e) {
+        SmartDialog.showToast('切换投屏失败：$e');
+      }
+      return;
+    }
 
     await _videoPlayerController?.play();
 
