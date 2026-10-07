@@ -33,6 +33,7 @@ import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/services/lan_cast/navigation.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
+import 'package:PiliPlus/services/lan_cast/settings.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
@@ -85,12 +86,59 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   final RxString castDevice = ''.obs;
   bool get isCasting => _castSession != null;
   String? receivingCastMediaKey;
+  PlayRepeat? receivingCastRepeat;
   bool get isReceivingCast =>
       !isCasting && receivingCastMediaKey == castMediaKey;
   int? liveRoomId;
   String mediaTitle = 'PiliPlus 视频';
   int sourceGeneration = 0;
   double? _localVolume;
+  String? playbackPageTag;
+  final castSettings = <String, LanCastSetting>{}.obs;
+
+  T playbackSetting<T>(String key, T local) {
+    // Read castDevice as well so existing Obx controls rebuild on detach.
+    return castDevice.value.isNotEmpty && castSettings[key]?.value is T
+        ? castSettings[key]!.value as T
+        : local;
+  }
+
+  bool get danmakuEnabled =>
+      playbackSetting('danmaku', enableShowDanmakuAdaptive.value);
+  bool get playbackOverlaysVisible => castDevice.value.isEmpty;
+
+  Future<void> setCastSetting(
+    String key,
+    Object value, {
+    String? mediaKey,
+  }) async {
+    final session = _castSession;
+    if (session == null || (mediaKey != null && mediaKey != session.mediaKey)) {
+      return;
+    }
+    if (!castSettings.containsKey(key)) {
+      SmartDialog.showToast('接收端暂不支持此设置，请更新接收端');
+      return;
+    }
+    await session.setSetting(key, value);
+    if (session.error case final error?) SmartDialog.showToast(error);
+  }
+
+  void setDanmakuEnabled(bool value) {
+    if (isCasting) {
+      setCastSetting('danmaku', value);
+      return;
+    }
+    enableShowDanmakuAdaptive.value = value;
+    if (!tempPlayerConf) {
+      setting.put(
+        isLive
+            ? SettingBoxKey.enableShowLiveDanmaku
+            : SettingBoxKey.enableShowDanmaku,
+        value,
+      );
+    }
+  }
 
   LanCastMedia get castMedia => LanCastMedia.fromJson(
     LanCastMedia(
@@ -121,6 +169,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _localVolume = volume.value;
     session.addListener(_syncCast);
     await _videoPlayerController?.pause();
+    danmakuController?.pause();
     audioSessionHandler?.setActive(false);
     _syncCast();
     controls = true;
@@ -139,6 +188,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         ? '正在 ${session.device!.name} 播放'
         : '连接中断 · 点击投屏按钮重连';
     final state = session.status;
+    castSettings.assignAll({for (final item in state.settings) item.key: item});
     position.value = state.position ~/ 1000;
     updateDuration(Duration(milliseconds: state.duration));
     buffered.value = duration.value;
@@ -163,6 +213,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     session.removeListener(_syncCast);
     _castSession = null;
     castDevice.value = '';
+    castSettings.clear();
     if (_localVolume != null) volume.value = _localVolume!;
     _localVolume = null;
     playerStatus = .paused;
@@ -640,7 +691,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   num get sliderScale => isRelative ? durationInMilliseconds * offset : offset;
 
   // 播放顺序相关
-  late PlayRepeat playRepeat = Pref.playRepeat;
+  late PlayRepeat _playRepeat = Pref.playRepeat;
+  PlayRepeat get playRepeat =>
+      isReceivingCast ? receivingCastRepeat ?? PlayRepeat.pause : _playRepeat;
 
   TextStyle get subTitleStyle => TextStyle(
     height: 1.5,
@@ -1084,6 +1137,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final Rx<SuperResolutionType> superResolutionType =
       (isAnim ? Pref.superResolutionType : SuperResolutionType.disable).obs;
   Future<void> setShader([SuperResolutionType? type, NativePlayer? pp]) async {
+    if (isCasting && type != null) return setCastSetting('shader', type.name);
     if (type == null) {
       type = superResolutionType.value;
     } else {
@@ -1672,6 +1726,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// Toggle Change the videofit accordingly
   void toggleVideoFit(VideoFitType value) {
+    if (isCasting) {
+      setCastSetting('fit', value.name);
+      return;
+    }
     _prefFit = videoFit.value = value;
     video.put(VideoBoxKey.cacheVideoFit, value.index);
   }
@@ -1981,7 +2039,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   void setPlayRepeat(PlayRepeat type) {
-    playRepeat = type;
+    if (isCasting) {
+      setCastSetting('repeat', type.name);
+      return;
+    }
+    if (isReceivingCast) {
+      receivingCastRepeat = type;
+      return;
+    }
+    _playRepeat = type;
     if (!tempPlayerConf) video.put(VideoBoxKey.playRepeat, type.index);
   }
 
@@ -2089,6 +2155,13 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   void setContinuePlayInBackground() {
+    if (isCasting) {
+      setCastSetting(
+        'background',
+        !playbackSetting('background', continuePlayInBackground.value),
+      );
+      return;
+    }
     continuePlayInBackground.toggle();
     if (!tempPlayerConf) {
       setting.put(

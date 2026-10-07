@@ -44,8 +44,6 @@ import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
-import 'package:PiliPlus/utils/storage.dart';
-import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
@@ -88,6 +86,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       tag: heroTag,
     );
     plPlayerController = _liveRoomController.plPlayerController
+      ..playbackPageTag = heroTag
       ..addStatusLister(playerListener);
     PlPlayerController.setPlayCallBack(plPlayerController.play);
     if (plPlayerController.removeSafeArea) {
@@ -123,6 +122,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     }
     plPlayerController.danmakuController =
         _liveRoomController.danmakuController;
+    plPlayerController.playbackPageTag = heroTag;
     PlPlayerController.setPlayCallBack(plPlayerController.play);
     _liveRoomController.startLiveTimer();
     if (plPlayerController.playerStatus.isPlaying &&
@@ -332,7 +332,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
             width: fullScreenSCWidth,
             child: Obx(() {
               final item = _liveRoomController.fsSC.value;
-              if (item == null) {
+              if (!plPlayerController.playbackOverlaysVisible || item == null) {
                 return const SizedBox.shrink();
               }
               try {
@@ -790,22 +790,16 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 Obx(
                   () {
                     final enableShowLiveDanmaku =
-                        plPlayerController.enableShowLiveDanmaku.value;
+                        plPlayerController.danmakuEnabled;
                     return SizedBox(
                       width: 34,
                       height: 34,
                       child: IconButton(
                         style: IconButton.styleFrom(padding: .zero),
                         onPressed: () {
-                          final newVal = !enableShowLiveDanmaku;
-                          plPlayerController.enableShowLiveDanmaku.value =
-                              newVal;
-                          if (!plPlayerController.tempPlayerConf) {
-                            GStorage.setting.put(
-                              SettingBoxKey.enableShowLiveDanmaku,
-                              newVal,
-                            );
-                          }
+                          plPlayerController.setDanmakuEnabled(
+                            !enableShowLiveDanmaku,
+                          );
                         },
                         icon: enableShowLiveDanmaku
                             ? const Icon(

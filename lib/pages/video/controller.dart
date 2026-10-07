@@ -714,7 +714,7 @@ class VideoDetailController extends GetxController
   }
 
   /// 更新画质、音质
-  void updatePlayer() {
+  Future<void> updatePlayer() async {
     final currentVideoQa = this.currentVideoQa.value;
     if (currentVideoQa == null) return;
     _autoPlay.value = true;
@@ -737,7 +737,7 @@ class VideoDetailController extends GetxController
       audioUrl = VideoUtils.getCdnUrl(firstAudio.playUrls, isAudio: true);
     }
 
-    playerInit();
+    await playerInit();
   }
 
   Future<void>? initPlayerIfNeeded(bool autoFullScreenFlag) {

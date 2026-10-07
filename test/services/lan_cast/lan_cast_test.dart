@@ -6,11 +6,12 @@ import 'package:PiliPlus/services/lan_cast/client.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/server.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
+import 'package:PiliPlus/services/lan_cast/settings.dart';
 import 'package:PiliPlus/services/lan_cast/store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 
-class _Playback implements LanCastPlayback {
+class _Playback implements LanCastPlayback, LanCastSettingsPlayback {
   LanCastMedia? media;
   final commands = <(String, double?)>[];
   final loads = <LanCastMedia>[];
@@ -22,6 +23,12 @@ class _Playback implements LanCastPlayback {
   Completer<void>? loading;
   bool failLoad = false;
   bool failAfterLoad = false;
+  bool danmaku = true;
+  double scale = 100;
+  String quality = '80';
+  final settingsChanges = <(String, Object)>[];
+  Completer<void>? applyingSetting;
+  Completer<void>? settingStarted;
   @override
   LanCastStatus get status => LanCastStatus(
     title: media?.title ?? '',
@@ -33,7 +40,47 @@ class _Playback implements LanCastPlayback {
     speed: media?.speed ?? 1,
     fullscreen: fullscreen,
     canFullscreen: true,
+    settings: [
+      LanCastSetting(
+        key: 'danmaku',
+        label: '显示弹幕',
+        group: '弹幕设置',
+        value: danmaku,
+      ),
+      LanCastSetting(
+        key: 'dmScale',
+        label: '字体大小',
+        group: '弹幕设置',
+        value: scale,
+        min: 50,
+        max: 600,
+        divisions: 550,
+      ),
+      LanCastSetting(
+        key: 'quality',
+        label: '选择画质',
+        group: '播放设置',
+        value: quality,
+        options: const {'80': '1080P', '64': '720P'},
+      ),
+    ],
   );
+  @override
+  Future<void> setSetting(String key, Object value) async {
+    settingsChanges.add((key, value));
+    settingStarted?.complete();
+    settingStarted = null;
+    await applyingSetting?.future;
+    switch (key) {
+      case 'danmaku':
+        danmaku = value as bool;
+      case 'dmScale':
+        scale = value as double;
+      case 'quality':
+        quality = value as String;
+    }
+  }
+
   @override
   Future<void> load(LanCastMedia value) async {
     loads.add(value);
@@ -208,6 +255,81 @@ void main() {
       await client.connect();
       expect((await client.load(_media)).playing, isTrue);
     });
+
+    test('settings use receiver options, require active pairing and reject stale media', () async {
+      await expectLater(
+        client.setSetting(_media.key, 'danmaku', false),
+        _status(401),
+      );
+      await pair();
+      await client.load(_media);
+      final state = await client.setSetting(_media.key, 'dmScale', 600);
+      expect(state.settings.firstWhere((e) => e.key == 'dmScale').value, 600);
+      await client.setSetting(_media.key, 'danmaku', false);
+      await client.setSetting(_media.key, 'quality', '64');
+      expect(playback.danmaku, isFalse);
+      expect(playback.quality, '64');
+      for (final (key, value) in <(String, Object)>[
+        ('dmScale', 601),
+        ('dmScale', '600'),
+        ('danmaku', 1),
+        ('quality', '120'),
+        ('quality', 80),
+      ]) {
+        await expectLater(
+          client.setSetting(_media.key, key, value),
+          _status(400),
+        );
+      }
+      await expectLater(
+        client.setSetting(_media.key, 'mpvProperty', 'file:///tmp/private'),
+        _status(422),
+      );
+      await client.load(_live);
+      await expectLater(
+        client.setSetting(_media.key, 'danmaku', true),
+        _status(422),
+      );
+      expect(playback.settingsChanges.length, 3);
+      await client.disconnect();
+      await expectLater(
+        client.setSetting(_live.key, 'danmaku', true),
+        _status(409),
+      );
+    });
+
+    test(
+      'settings share load queue and obsolete queued changes are discarded',
+      () async {
+        final senderStore = await _store();
+        final session = LanCastSession(trustStore: senderStore);
+        server.beginPairing();
+        await session.connect(
+          LanCastDevice(id: server.id, name: server.name, uri: uri),
+          server.pairingCode,
+          _media,
+        );
+        playback
+          ..applyingSetting = Completer<void>()
+          ..settingStarted = Completer<void>();
+        final first = session.setSetting('dmScale', 600);
+        await playback.settingStarted!.future;
+        final obsolete = session.setSetting('danmaku', false);
+        final replace = session.replaceMedia(_live);
+        playback.applyingSetting!.complete();
+        await first;
+        await obsolete;
+        await replace;
+        expect(playback.settingsChanges, [('dmScale', 600.0)]);
+        expect(session.mediaKey, _live.key);
+        expect(
+          session.status.settings.firstWhere((e) => e.key == 'dmScale').value,
+          600,
+        );
+        await session.disconnect();
+        session.dispose();
+      },
+    );
 
     test('fullscreen command is explicit, validates its value and works for live video', () async {
       await pair();

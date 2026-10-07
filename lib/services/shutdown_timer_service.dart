@@ -47,6 +47,18 @@ class ShutdownTimerService {
   bool _isWaiting = false;
   bool get isWaiting => _isWaiting;
   bool _waitUntilCompleted = false;
+  // ignore: unnecessary_getters_setters
+  bool get waitUntilCompleted => _waitUntilCompleted;
+  set waitUntilCompleted(bool value) => _waitUntilCompleted = value;
+  bool get exitOnTimeout => _shutdownType == .exit;
+  set exitOnTimeout(bool value) => _shutdownType = value ? .exit : .pause;
+  int get remainingMinutes => _deadline == null
+      ? 0
+      : ((_deadline!.difference(DateTime.now()).inSeconds + 59) ~/ 60).clamp(
+          0,
+          1499,
+        );
+  void scheduleCast(int minutes) => _startShutdownTimer(minutes);
 
   void _stopTimer() {
     if (_shutdownTimer != null) {

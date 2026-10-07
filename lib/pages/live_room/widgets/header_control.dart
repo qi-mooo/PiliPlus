@@ -6,6 +6,7 @@ import 'package:PiliPlus/common/widgets/draggable_sheet/dyn.dart';
 import 'package:PiliPlus/common/widgets/marquee.dart';
 import 'package:PiliPlus/models/common/video/live_quality.dart';
 import 'package:PiliPlus/pages/lan_cast/launch.dart';
+import 'package:PiliPlus/pages/lan_cast/settings_sheet.dart';
 import 'package:PiliPlus/pages/live_room/controller.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
@@ -201,10 +202,21 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
               height: btnHeight,
               tooltip: '仅播放音频',
               onTap: () {
+                if (plPlayerController.isCasting) {
+                  plPlayerController.setCastSetting(
+                    'audioOnly',
+                    !plPlayerController.playbackSetting('audioOnly', false),
+                  );
+                  return;
+                }
                 plPlayerController.onlyPlayAudio.toggle();
                 widget.onPlayAudio();
               },
-              icon: plPlayerController.onlyPlayAudio.value
+              icon:
+                  plPlayerController.playbackSetting(
+                    'audioOnly',
+                    plPlayerController.onlyPlayAudio.value,
+                  )
                   ? const Icon(
                       size: 18,
                       MdiIcons.musicCircle,
@@ -219,8 +231,11 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
           ),
           if (PlatformUtils.isMobile)
             Obx(() {
-              final continuePlayInBackground =
-                  plPlayerController.continuePlayInBackground.value;
+              final continuePlayInBackground = plPlayerController
+                  .playbackSetting(
+                    'background',
+                    plPlayerController.continuePlayInBackground.value,
+                  );
               return ComBtn(
                 height: btnHeight,
                 tooltip: '${continuePlayInBackground ? '关闭' : ''}后台播放',
@@ -241,11 +256,17 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
           ComBtn(
             height: btnHeight,
             tooltip: '定时关闭',
-            onTap: () => shutdownTimerService.showScheduleExitDialog(
-              context,
-              isFullScreen: isFullScreen,
-              isLive: true,
-            ),
+            onTap: () => plPlayerController.isCasting
+                ? showLanCastSettings(
+                    context,
+                    plPlayerController,
+                    group: '定时关闭',
+                  )
+                : shutdownTimerService.showScheduleExitDialog(
+                    context,
+                    isFullScreen: isFullScreen,
+                    isLive: true,
+                  ),
             icon: const Icon(
               size: 18,
               Icons.schedule,
@@ -260,6 +281,12 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
                 padding: .zero,
                 iconColor: Colors.white,
                 itemBuilder: (context) => [
+                  if (plPlayerController.isCasting)
+                    PopupMenuItem(
+                      onTap: () =>
+                          showLanCastSettings(this.context, plPlayerController),
+                      child: const Text('播放设置'),
+                    ),
                   PopupMenuItem(
                     height: 35,
                     onTap: _showLiveStreamDialog,
@@ -280,10 +307,16 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
                         Text('播放信息', style: TextStyle(fontSize: 14)),
                       ],
                     ),
-                    onTap: () => HeaderControlState.showPlayerInfo(
-                      context,
-                      player: player,
-                    ),
+                    onTap: () => plPlayerController.isCasting
+                        ? showLanCastSettings(
+                            this.context,
+                            plPlayerController,
+                            group: '播放信息',
+                          )
+                        : HeaderControlState.showPlayerInfo(
+                            context,
+                            player: player,
+                          ),
                   ),
                   if (PlatformUtils.isMobile)
                     PopupMenuItem(
@@ -293,19 +326,26 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
                         children: [
                           const Icon(Icons.volume_up, size: 17),
                           Text(
-                            '播放器音量: ${player.getProperty('volume').subLength(3)}%',
+                            '播放器音量: ${plPlayerController.isCasting ? plPlayerController.playbackSetting('gain', 100.0).toStringAsFixed(0) : player.getProperty('volume').subLength(3)}%',
                             style: const TextStyle(fontSize: 14),
                           ),
                         ],
                       ),
-                      onTap: () => showPlayerVolumeDialog(
-                        context,
-                        () {},
-                        onChanged: plPlayerController.isCasting
-                            ? (value) =>
-                                  plPlayerController.setVolume(value / 100)
-                            : player.setVolume,
-                      ),
+                      onTap: () => plPlayerController.isCasting
+                          ? showLanCastSettings(
+                              this.context,
+                              plPlayerController,
+                              settingKey: 'gain',
+                            )
+                          : showPlayerVolumeDialog(
+                              context,
+                              () {},
+                              onChanged: plPlayerController.isCasting
+                                  ? (value) => plPlayerController.setVolume(
+                                      value / 100,
+                                    )
+                                  : player.setVolume,
+                            ),
                     ),
                 ],
               ),
@@ -316,6 +356,10 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
   }
 
   void _showLiveStreamDialog() {
+    if (plPlayerController.isCasting) {
+      showLanCastSettings(context, plPlayerController, settingKey: 'liveRoute');
+      return;
+    }
     final controller = widget.liveController;
     showModalBottomSheet(
       context: context,

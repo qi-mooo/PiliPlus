@@ -106,5 +106,17 @@ class LanCastClient {
     await _request('/disconnect', {});
   }
 
+  Future<LanCastStatus> setSetting(
+    String mediaKey,
+    String key,
+    Object value,
+  ) async => LanCastStatus.fromJson(
+    await _request('/settings', {
+      'mediaKey': mediaKey,
+      'key': key,
+      'value': value,
+    }),
+  );
+
   void close() => _http.close(force: true);
 }

@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
+import 'package:PiliPlus/pages/lan_cast/settings_sheet.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/menu_row.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
@@ -10,6 +11,14 @@ import 'package:material_ui/material_ui.dart';
 
 mixin HeaderMixin<T extends StatefulWidget> on State<T> {
   PlPlayerController get plPlayerController;
+
+  void showCastSettings({String? group, String? settingKey}) =>
+      showLanCastSettings(
+        context,
+        plPlayerController,
+        group: group,
+        settingKey: settingKey,
+      );
 
   bool get isFullScreen => plPlayerController.isFullScreen.value;
 
@@ -51,6 +60,10 @@ mixin HeaderMixin<T extends StatefulWidget> on State<T> {
 
   /// 弹幕功能
   void showSetDanmaku({bool isLive = false}) {
+    if (plPlayerController.isCasting) {
+      showCastSettings(group: '弹幕设置');
+      return;
+    }
     // 屏蔽类型
     const blockTypesList = [
       (value: 2, label: '滚动'),

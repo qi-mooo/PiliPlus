@@ -564,7 +564,9 @@ class LiveRoomController extends GetxController {
     _trimDm();
 
     if (plPlayerController.showDanmaku) {
-      if (item != null && plPlayerController.enableShowLiveDanmaku.value) {
+      if (!plPlayerController.isCasting &&
+          item != null &&
+          plPlayerController.enableShowLiveDanmaku.value) {
         danmakuController?.addDanmaku(item);
       }
       if (autoScroll && !disableAutoScroll.value) {

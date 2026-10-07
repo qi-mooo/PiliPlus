@@ -82,7 +82,7 @@ class _PlDanmakuState extends State<PlDanmaku> {
   // 播放器状态监听
   void playerListener(PlayerStatus status) {
     if (_controller case final controller?) {
-      if (status.isPlaying) {
+      if (status.isPlaying && !playerController.isCasting) {
         controller.resume();
       } else {
         controller.pause();
@@ -92,7 +92,9 @@ class _PlDanmakuState extends State<PlDanmaku> {
 
   @pragma('vm:notify-debugger-on-exception')
   void videoPositionListen(Duration position) {
-    if (_controller == null || !playerController.enableShowDanmaku.value) {
+    if (playerController.isCasting ||
+        _controller == null ||
+        !playerController.enableShowDanmaku.value) {
       return;
     }
 

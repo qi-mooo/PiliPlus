@@ -5,17 +5,19 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_status.dart';
 import 'package:PiliPlus/services/lan_cast/discovery.dart';
 import 'package:PiliPlus/services/lan_cast/navigation.dart';
+import 'package:PiliPlus/services/lan_cast/page_settings.dart';
 import 'package:PiliPlus/services/lan_cast/permission.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/server.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
+import 'package:PiliPlus/services/lan_cast/settings.dart';
 import 'package:PiliPlus/services/lan_cast/store.dart';
 import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 /// Opens normal video routes; playback belongs to their existing controller.
-class LanCastPagePlayback implements LanCastPlayback {
+class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
   LanCastMedia? _media;
   PlPlayerController? _player;
   bool _loading = false;
@@ -45,6 +47,9 @@ class LanCastPagePlayback implements LanCastPlayback {
       isLive: _media?.isLive ?? false,
       fullscreen: player?.isFullScreen.value ?? false,
       canFullscreen: true,
+      settings: player == null || _loading
+          ? const []
+          : LanCastPageSettings(player).snapshot,
       error: _media != null && !_loading && player == null
           ? '接收端已关闭或切换视频'
           : null,
@@ -64,6 +69,7 @@ class LanCastPagePlayback implements LanCastPlayback {
     _media = media;
     _player = null;
     final previous = PlPlayerController.instance;
+    previous?.receivingCastRepeat = null;
     final previousGeneration = previous?.sourceGeneration;
     final deadline = DateTime.now().add(const Duration(seconds: 35));
     try {
@@ -134,9 +140,22 @@ class LanCastPagePlayback implements LanCastPlayback {
   }
 
   @override
+  Future<void> setSetting(String key, Object value) async {
+    final player = _current;
+    if (player == null) throw const LanCastException('接收端已关闭或切换视频', 409);
+    _loading = true;
+    try {
+      await LanCastPageSettings(player).apply(key, value);
+    } finally {
+      _loading = false;
+    }
+  }
+
+  @override
   Future<void> stop() async {
     final player = _current;
     _player?.receivingCastMediaKey = null;
+    _player?.receivingCastRepeat = null;
     await player?.pause();
     _media = null;
     _player = null;

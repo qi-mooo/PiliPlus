@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
+import 'package:PiliPlus/services/lan_cast/settings.dart';
 import 'package:PiliPlus/services/lan_cast/store.dart';
 
 class LanCastServer {
@@ -92,6 +93,7 @@ class LanCastServer {
             '/connect',
             '/load',
             '/command',
+            '/settings',
             '/disconnect',
             '/unpair',
           ].contains(path)) {
@@ -203,6 +205,21 @@ class LanCastServer {
         await playback.load(LanCastMedia.fromJson(body));
       case '/command':
         await _control(body['action'], body['value']);
+      case '/settings':
+        if (playback is! LanCastSettingsPlayback) {
+          throw const LanCastException('请更新接收端以支持播放设置', 422);
+        }
+        final status = playback.status;
+        if (body['mediaKey'] != status.mediaKey || status.mediaKey.isEmpty) {
+          throw const LanCastException('视频已切换，请重新打开设置', 422);
+        }
+        final key = lanCastText(body['key'], maxLength: 80);
+        final setting = status.settings.where((e) => e.key == key).firstOrNull;
+        if (setting == null) throw const LanCastException('接收端不支持此设置', 422);
+        await (playback as LanCastSettingsPlayback).setSetting(
+          key,
+          setting.validate(body['value']),
+        );
       case '/disconnect':
         await _release();
     }

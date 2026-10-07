@@ -186,6 +186,18 @@ class LanCastSession extends ChangeNotifier {
 
   // Queue gestures, including long-press speed restore and seek followed by play.
   Future<void> command(String action, [double? value]) {
+    return _sendControl((client) => client.command(action, value));
+  }
+
+  Future<void> setSetting(String key, Object value) {
+    final keyAtSend = mediaKey;
+    if (keyAtSend == null) return Future.value();
+    return _sendControl((client) => client.setSetting(keyAtSend, key, value));
+  }
+
+  Future<void> _sendControl(
+    Future<LanCastStatus> Function(LanCastClient) send,
+  ) {
     final client = _client;
     if (client == null) return Future.value();
     final revision = _loadRevision;
@@ -196,7 +208,7 @@ class LanCastSession extends ChangeNotifier {
       busy = true;
       _generation++;
       try {
-        final state = await client.command(action, value);
+        final state = await send(client);
         if (_client != client || revision != _loadRevision) return;
         status = state;
         online = true;

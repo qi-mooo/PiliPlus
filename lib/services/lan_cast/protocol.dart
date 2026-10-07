@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:PiliPlus/services/lan_cast/settings.dart';
+
 const lanCastServiceType = '_piliplus._tcp';
 const lanCastProtocolVersion = 2;
 const lanCastBodyLimit = 64 * 1024;
@@ -120,6 +122,7 @@ class LanCastStatus {
     this.mediaKey = '',
     this.fullscreen = false,
     this.canFullscreen = false,
+    this.settings = const [],
   });
 
   final String title;
@@ -134,6 +137,7 @@ class LanCastStatus {
   final String mediaKey;
   final bool fullscreen;
   final bool canFullscreen;
+  final List<LanCastSetting> settings;
 
   factory LanCastStatus.fromJson(Map<String, dynamic> json) => LanCastStatus(
     title: json['title'] as String,
@@ -148,6 +152,9 @@ class LanCastStatus {
     mediaKey: json['mediaKey'] as String? ?? '',
     fullscreen: json['fullscreen'] as bool? ?? false,
     canFullscreen: json['canFullscreen'] as bool? ?? false,
+    settings: (json['settings'] as List? ?? const [])
+        .map((e) => LanCastSetting.fromJson(e as Map<String, dynamic>))
+        .toList(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -163,6 +170,7 @@ class LanCastStatus {
     'mediaKey': mediaKey,
     'fullscreen': fullscreen,
     'canFullscreen': canFullscreen,
+    'settings': settings.map((e) => e.toJson()).toList(),
   };
 }
 

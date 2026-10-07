@@ -29,6 +29,7 @@ import 'package:PiliPlus/models_new/video/video_detail/ugc_season.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
+import 'package:PiliPlus/pages/lan_cast/settings_sheet.dart';
 import 'package:PiliPlus/pages/live_room/widgets/bottom_control.dart'
     as live_bottom;
 import 'package:PiliPlus/pages/video/controller.dart';
@@ -50,6 +51,7 @@ import 'package:PiliPlus/plugin/pl_player/widgets/common_btn.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/forward_seek.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/mpv_convert_webp.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_pause_btn.dart';
+import 'package:PiliPlus/plugin/pl_player/widgets/playback_overlay.dart';
 import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
@@ -619,6 +621,13 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       /// 画面比例
       BottomControlType.fit => Obx(
         () {
+          if (plPlayerController.castDevice.value.isNotEmpty) {
+            return LanCastSettingButton(
+              player: plPlayerController,
+              settingKey: 'fit',
+              label: '画面比例',
+            );
+          }
           final fit = plPlayerController.videoFit.value;
           return PopupMenuButton<VideoFitType>(
             tooltip: '画面比例',
@@ -657,6 +666,14 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
       BottomControlType.aiTranslate => Obx(
         () {
+          if (plPlayerController.castDevice.value.isNotEmpty) {
+            return LanCastSettingButton(
+              player: plPlayerController,
+              settingKey: 'translation',
+              label: '翻译',
+              icon: Icons.translate,
+            );
+          }
           final list = videoDetailController.languages.value;
           if (list != null && list.isNotEmpty) {
             return PopupMenuButton<String>(
@@ -703,6 +720,14 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       /// 字幕
       BottomControlType.subtitle => Obx(
         () {
+          if (plPlayerController.castDevice.value.isNotEmpty) {
+            return LanCastSettingButton(
+              player: plPlayerController,
+              settingKey: 'subtitle',
+              label: '字幕',
+              icon: Icons.subtitles_outlined,
+            );
+          }
           if (videoDetailController.subtitles.isNotEmpty) {
             final val = videoDetailController.vttSubtitlesIndex.value;
             return PopupMenuButton<int>(
@@ -799,6 +824,13 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         () {
           final VideoQuality? currentVideoQa =
               videoDetailController.currentVideoQa.value;
+          if (plPlayerController.castDevice.value.isNotEmpty) {
+            return LanCastSettingButton(
+              player: plPlayerController,
+              settingKey: 'quality',
+              label: '画质',
+            );
+          }
           if (currentVideoQa == null) {
             return const SizedBox.shrink();
           }
@@ -1169,6 +1201,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   }
 
   void _onTapDown(TapDownDetails details) {
+    if (!plPlayerController.playbackOverlaysVisible) return;
     final ctr = plPlayerController.danmakuController;
     if (ctr != null) {
       final pos = details.localPosition;
@@ -1372,19 +1405,25 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         _videoWidget,
 
         if (widget.danmuWidget case final danmaku?)
-          Positioned.fill(top: 4, child: danmaku),
+          Positioned.fill(
+            top: 4,
+            child: PlaybackOverlay(player: plPlayerController, child: danmaku),
+          ),
 
         if (!isLive)
           Positioned.fill(
             child: IgnorePointer(
               ignoring: !plPlayerController.enableDragSubtitle,
               child: Obx(
-                () => SubtitleView(
-                  controller: videoController,
-                  configuration: plPlayerController.subtitleConfig.value,
-                  enableDragSubtitle: plPlayerController.enableDragSubtitle,
-                  onUpdatePadding: plPlayerController.onUpdatePadding,
-                ),
+                () => !plPlayerController.playbackOverlaysVisible
+                    ? const SizedBox.shrink()
+                    : SubtitleView(
+                        controller: videoController,
+                        configuration: plPlayerController.subtitleConfig.value,
+                        enableDragSubtitle:
+                            plPlayerController.enableDragSubtitle,
+                        onUpdatePadding: plPlayerController.onUpdatePadding,
+                      ),
               ),
             ),
           ),
@@ -1392,7 +1431,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         if (plPlayerController.enableTapDm)
           Obx(
             () {
-              if (!plPlayerController.enableShowDanmaku.value) {
+              if (!plPlayerController.playbackOverlaysVisible ||
+                  !plPlayerController.enableShowDanmaku.value) {
                 return const SizedBox.shrink();
               }
               final dmOffset = _dmOffset.value;
@@ -1784,7 +1824,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                                 : null,
                           ),
                         ),
-                      if (plPlayerController.showDmChart &&
+                      if (plPlayerController.playbackOverlaysVisible &&
+                          plPlayerController.showDmChart &&
                           videoDetailController.showDmTrendChart.value)
                         if (videoDetailController.dmTrend.value?.dataOrNull
                             case final list?)

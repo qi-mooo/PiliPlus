@@ -68,8 +68,6 @@ import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
-import 'package:PiliPlus/utils/storage.dart';
-import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, clampDouble;
@@ -153,6 +151,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     super.initState();
 
     videoDetailController = Get.put(VideoDetailController(), tag: heroTag);
+    videoDetailController.plPlayerController.playbackPageTag = heroTag;
 
     introController = _initIntroCtr();
 
@@ -209,6 +208,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   }
 
   void _setPlayCallBack() {
+    videoDetailController.plPlayerController.playbackPageTag = heroTag;
     PlPlayerController.setPlayCallBack(
       playCallBack,
       playOwner: (tag: heroTag, type: introController.runtimeType),
@@ -272,6 +272,9 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       if (shutdownTimerService.isWaiting) {
         shutdownTimerService.handleWaiting();
       } else if (plPlayerController!.isReceivingCast) {
+        if (plPlayerController!.receivingCastRepeat == PlayRepeat.singleCycle) {
+          plPlayerController!.play(repeat: true);
+        }
         // Keep this video and the cast connection ready for the sender's choice.
         return;
       } else {
@@ -1430,17 +1433,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
               child: Obx(
                 () {
                   final ctr = videoDetailController.plPlayerController;
-                  final enableShowDanmaku = ctr.enableShowDanmaku.value;
+                  final enableShowDanmaku = ctr.danmakuEnabled;
                   return IconButton(
                     onPressed: () {
-                      final newVal = !enableShowDanmaku;
-                      ctr.enableShowDanmaku.value = newVal;
-                      if (!ctr.tempPlayerConf) {
-                        GStorage.setting.put(
-                          SettingBoxKey.enableShowDanmaku,
-                          newVal,
-                        );
-                      }
+                      ctr.setDanmakuEnabled(!enableShowDanmaku);
                     },
                     icon: Icon(
                       size: 22,
