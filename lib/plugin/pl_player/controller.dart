@@ -330,6 +330,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   final RxBool longPressStatus = false.obs;
   final RxBool longPressSpeedLocked = false.obs;
   final RxDouble longPressLockProgress = 0.0.obs;
+  bool _longPressSpeedChanged = false;
+  bool get canSwipeLongPressSpeed =>
+      longPressStatus.value && !_longPressSpeedChanged;
   double? _speedBeforeLongPress;
   double? _activeLongPressSpeed;
   double get activeLongPressSpeed => _activeLongPressSpeed ?? playbackSpeed;
@@ -1797,6 +1800,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
     if (val) {
       if (isLive || controlsLock.value || !playerStatus.isPlaying) return;
+      _longPressSpeedChanged = false;
+      longPressLockProgress.value = 0;
       // A second long press must not multiply an already locked speed again.
       if (longPressSpeedLocked.value) {
         longPressStatus.value = true;
@@ -1825,19 +1830,21 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
   }
 
-  /// Only a deliberate downward swipe after the long press locks the rate.
-  void updateLongPressOffset(Offset offset) {
-    if (!longPressStatus.value ||
-        longPressSpeedLocked.value ||
-        isLive ||
-        controlsLock.value) {
+  /// Toggle once per long press; continuing the same swipe must not undo it.
+  Future<void> updateLongPressOffset(Offset offset) async {
+    if (!canSwipeLongPressSpeed || isLive || controlsLock.value) {
       return;
     }
     final downward = offset.dy > 0 && offset.dy >= offset.dx.abs() * 1.5;
     longPressLockProgress.value = downward ? (offset.dy / 48).clamp(0, 1) : 0;
     if (longPressLockProgress.value < 1) return;
-    longPressSpeedLocked.value = true;
+    _longPressSpeedChanged = true;
     HapticFeedback.lightImpact();
+    if (longPressSpeedLocked.value) {
+      await unlockLongPressSpeed();
+    } else {
+      longPressSpeedLocked.value = true;
+    }
   }
 
   Future<void> unlockLongPressSpeed() async {
@@ -1851,6 +1858,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     cancelLongPressTimer();
     _speedBeforeLongPress = null;
     _activeLongPressSpeed = null;
+    _longPressSpeedChanged = false;
     longPressStatus.value = false;
     longPressSpeedLocked.value = false;
     longPressLockProgress.value = 0;

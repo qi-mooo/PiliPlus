@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:PiliPlus/common/widgets/gesture/immediate_tap_gesture_recognizer.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/long_press_speed_gesture_recognizer.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/long_press_speed_indicator.dart';
@@ -74,12 +75,17 @@ void main() {
     WidgetTester tester, {
     VoidCallback? onPan,
     bool disposeOnTearDown = true,
+    bool autoHideWithControls = false,
   }) async {
     final longPress = LongPressSpeedGestureRecognizer(player);
     final pan = ScaleGestureRecognizer()..onUpdate = (_) => onPan?.call();
+    final tap = ImmediateTapGestureRecognizer(
+      onTapUp: (_) => player.controls = !player.showControls.value,
+    );
     addTearDown(() {
       if (disposeOnTearDown) longPress.dispose();
       pan.dispose();
+      tap.dispose();
     });
     await tester.pumpWidget(
       MaterialApp(
@@ -93,12 +99,17 @@ void main() {
                   child: Listener(
                     behavior: HitTestBehavior.opaque,
                     onPointerDown: (event) {
+                      tap.addPointer(event);
                       longPress.addPointer(event);
                       pan.addPointer(event);
                     },
                   ),
                 ),
-                LongPressSpeedIndicator(player: player, isFullScreen: false),
+                LongPressSpeedIndicator(
+                  player: player,
+                  isFullScreen: false,
+                  autoHideWithControls: autoHideWithControls,
+                ),
               ],
             ),
           ),
@@ -142,6 +153,90 @@ void main() {
       expect(player.longPressLockProgress.value, 0);
     },
   );
+
+  testWidgets(
+    'mobile lock indicator follows the controls and stays tappable when shown',
+    (tester) async {
+      await mountPlayer(tester, autoHideWithControls: true);
+      final indicator = find.descendant(
+        of: find.byType(LongPressSpeedIndicator),
+        matching: find.byType(AnimatedOpacity),
+      );
+      final gesture = await hold(tester);
+      await gesture.moveBy(const Offset(0, 60));
+      await tester.pumpAndSettle();
+      expect(tester.widget<AnimatedOpacity>(indicator).opacity, 1);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(tester.widget<AnimatedOpacity>(indicator).opacity, 0);
+      expect(player.playbackSpeed, 3);
+      final restore = find.text('3倍速已锁定 · 点击恢复');
+      expect(restore.hitTestable(), findsNothing);
+
+      await tester.tapAt(const Offset(200, 180));
+      await tester.pumpAndSettle();
+      expect(player.showControls.value, isTrue);
+      expect(tester.widget<AnimatedOpacity>(indicator).opacity, 1);
+      expect(restore.hitTestable(), findsOneWidget);
+
+      await tester.pump(player.showControlDuration);
+      await tester.pumpAndSettle();
+      expect(player.showControls.value, isFalse);
+      expect(tester.widget<AnimatedOpacity>(indicator).opacity, 0);
+      expect(player.longPressSpeedLocked.value, isTrue);
+
+      await tester.tapAt(const Offset(200, 180));
+      await tester.pumpAndSettle();
+      await tester.tap(restore);
+      await tester.pumpAndSettle();
+      expect(player.playbackSpeed, 1.25);
+      expect(player.longPressSpeedLocked.value, isFalse);
+      expect(tester.widget<AnimatedOpacity>(indicator).opacity, 0);
+      player.controls = false;
+    },
+  );
+
+  testWidgets('a fresh long press and downward swipe unlocks exactly once', (
+    tester,
+  ) async {
+    var pans = 0;
+    await mountPlayer(tester, onPan: () => pans++, autoHideWithControls: true);
+    final first = await hold(tester);
+    await first.moveBy(const Offset(0, 60));
+    await first.moveBy(const Offset(0, 20));
+    await first.moveBy(const Offset(0, -25));
+    await first.up();
+    await tester.pumpAndSettle();
+    expect(player.longPressSpeedLocked.value, isTrue);
+
+    // A normal swipe still belongs to the volume/brightness/fullscreen gesture.
+    await tester.dragFrom(const Offset(200, 180), const Offset(0, 70));
+    await tester.pumpAndSettle();
+    expect(pans, greaterThan(0));
+    expect(player.longPressSpeedLocked.value, isTrue);
+    expect(player.playbackSpeed, 3);
+
+    final short = await hold(tester);
+    expect(find.text('下滑解除倍速'), findsOneWidget);
+    await short.moveBy(const Offset(0, 20));
+    await short.up();
+    await tester.pumpAndSettle();
+    expect(player.longPressSpeedLocked.value, isTrue);
+    expect(player.playbackSpeed, 3);
+
+    final second = await hold(tester);
+    await second.moveBy(const Offset(0, 24));
+    await tester.pump();
+    expect(player.longPressLockProgress.value, 0.5);
+    expect(player.longPressSpeedLocked.value, isTrue);
+    await second.moveBy(const Offset(0, 30));
+    await second.moveBy(const Offset(0, 20));
+    await second.up();
+    await tester.pumpAndSettle();
+    expect(player.longPressSpeedLocked.value, isFalse);
+    expect(player.longPressStatus.value, isFalse);
+    expect(player.playbackSpeed, 1.25);
+  });
 
   for (final offset in [
     Offset.zero,
@@ -256,7 +351,10 @@ void main() {
       expect(player.playbackSpeed, 1.25); // No receiver reply yet.
       expect(player.activeLongPressSpeed, 3);
       expect(session.commands, [('speed', 3.0)]);
-      final unlock = player.unlockLongPressSpeed();
+      await player.setLongPressStatus(true);
+      final unlock = player.updateLongPressOffset(const Offset(0, 60));
+      await player.updateLongPressOffset(const Offset(0, 80));
+      await player.setLongPressStatus(false);
       expect(session.commands, [('speed', 3.0), ('speed', 1.25)]);
       for (final reply in session.replies) {
         reply.complete();

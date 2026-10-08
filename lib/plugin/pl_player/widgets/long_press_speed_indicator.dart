@@ -7,10 +7,12 @@ class LongPressSpeedIndicator extends StatelessWidget {
     super.key,
     required this.player,
     required this.isFullScreen,
+    this.autoHideWithControls = false,
   });
 
   final PlPlayerController player;
   final bool isFullScreen;
+  final bool autoHideWithControls;
 
   @override
   Widget build(BuildContext context) => Align(
@@ -22,7 +24,9 @@ class LongPressSpeedIndicator extends StatelessWidget {
         final locked = player.longPressSpeedLocked.value;
         final progress = player.longPressLockProgress.value;
         final visible =
-            (pressed || locked) &&
+            (pressed ||
+                (locked &&
+                    (!autoHideWithControls || player.showControls.value))) &&
             !player.controlsLock.value &&
             !player.isSeeking.value;
         final canUnlock = visible && locked && !pressed;
@@ -85,7 +89,7 @@ class LongPressSpeedIndicator extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (pressed && !locked)
+                if (player.canSwipeLongPressSpeed)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: DecoratedBox(
@@ -107,10 +111,10 @@ class LongPressSpeedIndicator extends StatelessWidget {
                               color: Colors.white,
                               size: 18,
                             ),
-                            const Flexible(
+                            Flexible(
                               child: Text(
-                                '下滑锁定倍速',
-                                style: TextStyle(
+                                locked ? '下滑解除倍速' : '下滑锁定倍速',
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
                                 ),
@@ -127,8 +131,10 @@ class LongPressSpeedIndicator extends StatelessWidget {
                                     color: Colors.white,
                                     backgroundColor: Colors.white24,
                                   ),
-                                  const Icon(
-                                    Icons.lock_open_outlined,
+                                  Icon(
+                                    locked
+                                        ? Icons.lock_outline
+                                        : Icons.lock_open_outlined,
                                     color: Colors.white,
                                     size: 14,
                                   ),

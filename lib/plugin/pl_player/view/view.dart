@@ -2028,6 +2028,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           LongPressSpeedIndicator(
             player: plPlayerController,
             isFullScreen: isFullScreen,
+            autoHideWithControls: PlatformUtils.isMobile,
           ),
       ],
     );
