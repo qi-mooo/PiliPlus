@@ -166,6 +166,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       return;
     }
     if (isCasting) _detachCast(restorePosition: false);
+    _resetLongPressSpeed();
     _castSession = session;
     _localVolume = volume.value;
     session.addListener(_syncCast);
@@ -211,6 +212,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   void _detachCast({bool restorePosition = true}) {
     final session = _castSession;
     if (session == null) return;
+    _resetLongPressSpeed();
     session.removeListener(_syncCast);
     _castSession = null;
     castDevice.value = '';
@@ -311,7 +313,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   int _playerCount = 0;
 
-  late double lastPlaybackSpeed = 1.0;
   final RxDouble _playbackSpeed = Pref.playSpeedDefault.obs;
   late final RxDouble _longPressSpeed = Pref.longPressSpeedDefault.obs;
 
@@ -327,6 +328,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   final RxBool showBrightnessStatus = false.obs;
 
   final RxBool longPressStatus = false.obs;
+  final RxBool longPressSpeedLocked = false.obs;
+  final RxDouble longPressLockProgress = 0.0.obs;
+  double? _speedBeforeLongPress;
+  double? _activeLongPressSpeed;
+  double get activeLongPressSpeed => _activeLongPressSpeed ?? playbackSpeed;
 
   final RxBool controlsLock = false.obs;
 
@@ -1046,6 +1052,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
     final continueCast = dataSource is NetworkSource && session.connected;
     final controlRoute = LanCastNavigation.instance.currentPageRoute;
+    _resetLongPressSpeed();
     final generation = ++sourceGeneration;
     try {
       _processing = true;
@@ -1583,8 +1590,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   /// 设置倍速
-  Future<void> setPlaybackSpeed(double speed) async {
-    lastPlaybackSpeed = playbackSpeed;
+  Future<void> setPlaybackSpeed(double speed) {
+    _resetLongPressSpeed();
+    return _setPlaybackSpeed(speed);
+  }
+
+  Future<void> _setPlaybackSpeed(double speed) async {
     if (_castSession case final session?) {
       return session.command('speed', speed.clamp(0.25, 4));
     }
@@ -1594,7 +1605,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       return;
     }
 
-    if (player != null && !longPressStatus.value) {
+    if (player != null &&
+        !longPressStatus.value &&
+        !longPressSpeedLocked.value) {
       _applyIosHighLoadRateMode(player, false);
     }
     await player?.setRate(speed);
@@ -1779,36 +1792,70 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// 设置长按倍速状态 live模式下禁用
   Future<void> setLongPressStatus(bool val) async {
-    if (isLive) {
-      return;
-    }
-    if (controlsLock.value) {
-      return;
-    }
     if (longPressStatus.value == val) {
       return;
     }
     if (val) {
-      if (playerStatus.isPlaying) {
-        longPressStatus.value = val;
-        HapticFeedback.lightImpact();
-        if (_videoPlayerController case final player?) {
-          _applyIosHighLoadRateMode(
-            player,
-            _isIosHighLoadVideo && !onlyPlayAudio.value,
-          );
-        }
-        await setPlaybackSpeed(
-          enableAutoLongPressSpeed ? playbackSpeed * 2 : longPressSpeed,
+      if (isLive || controlsLock.value || !playerStatus.isPlaying) return;
+      // A second long press must not multiply an already locked speed again.
+      if (longPressSpeedLocked.value) {
+        longPressStatus.value = true;
+        return;
+      }
+      _speedBeforeLongPress = playbackSpeed;
+      final speed = enableAutoLongPressSpeed
+          ? playbackSpeed * 2
+          : longPressSpeed;
+      _activeLongPressSpeed = isCasting ? speed.clamp(0.25, 4) : speed;
+      longPressStatus.value = true;
+      HapticFeedback.lightImpact();
+      if (_videoPlayerController case final player?) {
+        _applyIosHighLoadRateMode(
+          player,
+          _isIosHighLoadVideo && !onlyPlayAudio.value,
         );
       }
+      await _setPlaybackSpeed(activeLongPressSpeed);
     } else {
-      // if (kDebugMode) debugPrint('$playbackSpeed');
-      longPressStatus.value = val;
-      if (_videoPlayerController case final player?) {
-        _applyIosHighLoadRateMode(player, false);
-      }
-      await setPlaybackSpeed(lastPlaybackSpeed);
+      longPressStatus.value = false;
+      if (longPressSpeedLocked.value) return;
+      final speed = _speedBeforeLongPress;
+      _resetLongPressSpeed();
+      if (speed != null) await _setPlaybackSpeed(speed);
+    }
+  }
+
+  /// Only a deliberate downward swipe after the long press locks the rate.
+  void updateLongPressOffset(Offset offset) {
+    if (!longPressStatus.value ||
+        longPressSpeedLocked.value ||
+        isLive ||
+        controlsLock.value) {
+      return;
+    }
+    final downward = offset.dy > 0 && offset.dy >= offset.dx.abs() * 1.5;
+    longPressLockProgress.value = downward ? (offset.dy / 48).clamp(0, 1) : 0;
+    if (longPressLockProgress.value < 1) return;
+    longPressSpeedLocked.value = true;
+    HapticFeedback.lightImpact();
+  }
+
+  Future<void> unlockLongPressSpeed() async {
+    if (!longPressSpeedLocked.value) return;
+    final speed = _speedBeforeLongPress;
+    _resetLongPressSpeed();
+    if (speed != null) await _setPlaybackSpeed(speed);
+  }
+
+  void _resetLongPressSpeed() {
+    cancelLongPressTimer();
+    _speedBeforeLongPress = null;
+    _activeLongPressSpeed = null;
+    longPressStatus.value = false;
+    longPressSpeedLocked.value = false;
+    longPressLockProgress.value = 0;
+    if (_videoPlayerController case final player?) {
+      _applyIosHighLoadRateMode(player, false);
     }
   }
 
@@ -2121,6 +2168,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     _playerCount = 0;
+    _resetLongPressSpeed();
     if (isCasting) {
       detachCast();
     }

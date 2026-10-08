@@ -38,6 +38,7 @@ import 'package:PiliPlus/pages/video/post_panel/popup_menu_text.dart';
 import 'package:PiliPlus/pages/video/post_panel/view.dart';
 import 'package:PiliPlus/pages/video/widgets/header_control.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/long_press_speed_gesture_recognizer.dart';
 import 'package:PiliPlus/plugin/pl_player/models/bottom_control_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_status.dart';
 import 'package:PiliPlus/plugin/pl_player/models/double_tap_type.dart';
@@ -49,6 +50,7 @@ import 'package:PiliPlus/plugin/pl_player/widgets/backward_seek.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/bottom_control.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/common_btn.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/forward_seek.dart';
+import 'package:PiliPlus/plugin/pl_player/widgets/long_press_speed_indicator.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/mpv_convert_webp.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_pause_btn.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/playback_overlay.dart';
@@ -1235,16 +1237,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   LongPressGestureRecognizer? _longPressRecognizer;
   LongPressGestureRecognizer get longPressRecognizer => _longPressRecognizer ??=
-      LongPressGestureRecognizer(
-          duration: plPlayerController.enableTapDm
-              ? const Duration(milliseconds: 300)
-              : null,
-        )
-        ..onLongPressStart = ((_) =>
-            plPlayerController.setLongPressStatus(true))
-        ..onLongPressEnd = ((_) => plPlayerController.setLongPressStatus(false))
-        ..onLongPressCancel = (() =>
-            plPlayerController.setLongPressStatus(false));
+      LongPressSpeedGestureRecognizer(plPlayerController);
   late final ImmediateTapGestureRecognizer _tapGestureRecognizer;
   late final DoubleTapGestureRecognizer _doubleTapGestureRecognizer;
   late final PlayerScaleGestureRecognizer _scaleGestureRecognizer;
@@ -1441,45 +1434,6 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
               }
               return const SizedBox.shrink();
             },
-          ),
-
-        /// 长按倍速 toast
-        if (!isLive)
-          IgnorePointer(
-            ignoring: true,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: FractionalTranslation(
-                translation: isFullScreen
-                    ? const Offset(0.0, 1.2)
-                    : const Offset(0.0, 0.8),
-                child: Obx(
-                  () => AnimatedOpacity(
-                    curve: Curves.easeInOut,
-                    opacity: plPlayerController.longPressStatus.value
-                        ? 1.0
-                        : 0.0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Color(0x88000000),
-                        borderRadius: BorderRadius.all(Radius.circular(16)),
-                      ),
-                      child: Obx(
-                        () => Text(
-                          '${plPlayerController.enableAutoLongPressSpeed ? (plPlayerController.longPressStatus.value ? plPlayerController.lastPlaybackSpeed : plPlayerController.playbackSpeed) * 2 : plPlayerController.longPressSpeed}倍速中',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
           ),
 
         /// 时间进度 toast
@@ -2069,6 +2023,12 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                   )
                 : const SizedBox.shrink();
           }),
+        // Keep the unlock target above the header and other playback controls.
+        if (!isLive)
+          LongPressSpeedIndicator(
+            player: plPlayerController,
+            isFullScreen: isFullScreen,
+          ),
       ],
     );
     if (PlatformUtils.isDesktop) {
