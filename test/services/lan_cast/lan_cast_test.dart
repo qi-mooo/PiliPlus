@@ -19,6 +19,8 @@ class _Playback implements LanCastPlayback, LanCastSettingsPlayback {
   bool playing = false;
   bool fullscreen = false;
   bool completed = false;
+  bool reportCurrentMedia = false;
+  bool buffering = false;
   int stopped = 0;
   Completer<void>? loading;
   bool failLoad = false;
@@ -36,6 +38,8 @@ class _Playback implements LanCastPlayback, LanCastSettingsPlayback {
     position: completed ? 120000 : media?.position ?? 0,
     duration: 120000,
     playing: playing,
+    buffering: buffering,
+    currentMedia: reportCurrentMedia ? media : null,
     isLive: media?.isLive ?? false,
     speed: media?.speed ?? 1,
     fullscreen: fullscreen,
@@ -175,6 +179,45 @@ void main() {
       );
     }
   });
+
+  test(
+    'list sources round-trip as API identifiers without copying entries',
+    () {
+      const source = LanCastListSource(
+        type: 'fav',
+        id: 123,
+        title: '收藏夹',
+        desc: true,
+      );
+      final json = {..._media.toJson(), 'listSource': source.toJson()};
+      final media = LanCastMedia.fromJson(json);
+      expect(media.listSource?.toJson(), source.toJson());
+      expect(media.toJson(), isNot(contains('playlist')));
+      expect(media.toJson(), isNot(contains('token')));
+      final state = LanCastStatus(mediaKey: media.key, currentMedia: media);
+      expect(
+        LanCastStatus.fromJson(state.toJson()).currentMedia?.listSource?.id,
+        123,
+      );
+      expect(
+        LanCastStatus.fromJson(const LanCastStatus().toJson()).currentMedia,
+        isNull,
+      );
+      for (final change in [
+        {'type': 'file'},
+        {'id': 0},
+        {'id': 1.5},
+        {'mediaType': 1.5},
+        {'sortField': 1.5},
+        {'desc': 'true'},
+      ]) {
+        expect(
+          () => LanCastListSource.fromJson({...source.toJson(), ...change}),
+          throwsA(isA<LanCastException>()),
+        );
+      }
+    },
+  );
 
   test('only explicit LAN IP endpoints are allowed', () {
     expect(lanCastAddress('192.168.1.10:51000').host, '192.168.1.10');
@@ -521,6 +564,52 @@ void main() {
       expect(playback.loads.map((e) => e.key), [_media.key, next.key]);
       expect(playback.stopped, 0);
       expect(server.pairingCode, isNull);
+    });
+
+    test('receiver playlist transitions update identity without reloading or reconnecting', () async {
+      final session = await connectedSession();
+      final device = session.device;
+      const next = LanCastMedia(
+        title: '接收端下一集',
+        kind: 'pgc',
+        aid: 10,
+        cid: 20,
+        epId: 30,
+        seasonId: 40,
+      );
+      playback
+        ..reportCurrentMedia = true
+        ..media = next
+        ..buffering = true;
+      // Controls sent before the next status poll cannot seek the new episode.
+      await session.command('seek', 90000);
+      expect(playback.commands, isEmpty);
+      expect(session.connected, isTrue);
+      await session.refresh();
+      expect(session.mediaKey, next.key);
+      expect(session.media?.toJson(), next.toJson());
+      expect(session.device, same(device));
+      expect(session.status.buffering, isTrue);
+      expect(session.error, isNull);
+      expect(playback.loads.length, 1);
+      playback.buffering = false;
+      await session.command('pause');
+      expect(playback.commands, [('pause', null)]);
+      expect(await session.replaceMedia(next), isTrue);
+      expect(playback.loads.length, 1);
+      playback.media = _media; // Loop back to the first item.
+      await session.refresh();
+      expect(session.mediaKey, _media.key);
+      expect(session.connected, isTrue);
+    });
+
+    test('unrelated receiver navigation still ends the session', () async {
+      final session = await connectedSession();
+      playback.media =
+          _live; // No receiving identity is reported for this page.
+      await session.refresh();
+      expect(session.connected, isFalse);
+      expect(session.error, isNotNull);
     });
 
     test(

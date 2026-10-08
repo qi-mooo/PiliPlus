@@ -1,6 +1,7 @@
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/search.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
+import 'package:PiliPlus/models/common/video/source_type.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
@@ -11,6 +12,7 @@ import 'package:material_ui/material_ui.dart';
 Future<void> openLanCastVideo(
   LanCastMedia media, {
   bool receiving = false,
+  bool replacePage = false,
   int? position,
   bool Function()? stillValid,
 }) async {
@@ -26,6 +28,18 @@ Future<void> openLanCastVideo(
   final extra = <String, dynamic>{
     receiving ? 'lanCast' : 'lanCastResume': true,
   };
+  if (media.listSource case final source?) {
+    extra.addAll({
+      'sourceType': SourceType.values.byName(source.type),
+      'mediaId': source.id,
+      'favTitle': source.title,
+      'desc': source.desc,
+      if (source.mediaType != null) 'mediaType': source.mediaType,
+      'sortField': source.sortField,
+      'isContinuePlaying': true,
+      'oid': media.aid,
+    });
+  }
   if (media.kind != 'ugc') {
     final result =
         await (media.kind == 'pgc'
@@ -54,6 +68,7 @@ Future<void> openLanCastVideo(
     title: media.title,
     progress: position ?? media.position,
     extraArguments: extra,
+    off: replacePage,
   );
 }
 
@@ -96,7 +111,22 @@ class LanCastNavigation extends NavigatorObserver with ChangeNotifier {
     }
   }
 
-  Future<void> returnToControls(LanCastSession session) async {
+  Future<void> followReceiver(
+    LanCastSession session,
+    String previousKey,
+  ) async {
+    if (_controlKey != previousKey ||
+        _controlRoute == null ||
+        _routes.lastOrNull != _controlRoute) {
+      return;
+    }
+    await returnToControls(session, replacePage: true);
+  }
+
+  Future<void> returnToControls(
+    LanCastSession session, {
+    bool replacePage = false,
+  }) async {
     final media = session.media;
     if (opening || !session.connected || media == null) return;
     if (_controlKey == media.key && _routes.contains(_controlRoute)) {
@@ -112,6 +142,7 @@ class LanCastNavigation extends NavigatorObserver with ChangeNotifier {
       } else {
         await openLanCastVideo(
           media,
+          replacePage: replacePage,
           position: session.status.position,
           stillValid: stillValid,
         );

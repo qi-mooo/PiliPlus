@@ -196,6 +196,23 @@ void main() {
     final repeat = player.playRepeat;
     player.receivingCastMediaKey = player.castMediaKey;
     expect(player.playRepeat, PlayRepeat.pause);
+    final options = receiver.snapshot
+        .firstWhere((e) => e.key == 'repeat')
+        .options;
+    expect(
+      options.keys,
+      containsAll([
+        'pause',
+        'singleCycle',
+        'listOrder',
+        'listCycle',
+        'autoPlayRelated',
+      ]),
+    );
+    for (final mode in PlayRepeat.values) {
+      await receiver.apply('repeat', mode.name);
+      expect(player.playRepeat, mode);
+    }
     await receiver.apply('repeat', 'singleCycle');
     expect(player.playRepeat, PlayRepeat.singleCycle);
     player
@@ -228,6 +245,37 @@ void main() {
     await receiver.apply('subScaleFS', subtitleScale * 100);
     await receiver.apply('flipX', flipX);
   });
+
+  test(
+    'receiver ownership and repeat mode follow only a prepared episode change',
+    () {
+      final player = PlPlayerController.getInstance();
+      final oldCid = player.cid;
+      player
+        ..cid = 10
+        ..receivingCastMediaKey = player.castMediaKey
+        ..receivingCastRepeat = PlayRepeat.listCycle;
+      final oldKey = player.castMediaKey;
+      final nextKey = oldKey.replaceFirst(':10:', ':20:');
+      player.prepareReceivingCastEpisode(nextKey);
+      expect(player.updateReceivingCastSource(nextKey, network: true), isTrue);
+      player.cid = 20;
+      expect(player.isReceivingCast, isTrue);
+      expect(player.playRepeat, PlayRepeat.listCycle);
+      expect(
+        player.updateReceivingCastSource(nextKey, network: true),
+        isTrue,
+      ); // Quality reload.
+      expect(
+        player.updateReceivingCastSource(oldKey, network: true),
+        isFalse,
+      ); // Unrelated video.
+      expect(player.receivingCastRepeat, isNull);
+      player
+        ..cid = oldCid
+        ..clearReceivingCast();
+    },
+  );
 
   testWidgets(
     'existing player button and gestures control receiver and reflect its state',

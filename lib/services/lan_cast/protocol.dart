@@ -35,6 +35,55 @@ double lanCastNumber(Object? value, double min, double max) {
   return value.toDouble();
 }
 
+int lanCastInteger(Object? value, int min, int max) {
+  if (value is! int || value < min || value > max) {
+    throw const LanCastException('控制参数超出范围');
+  }
+  return value;
+}
+
+/// An API list entry point, never a copied list or account credential.
+class LanCastListSource {
+  const LanCastListSource({
+    required this.type,
+    required this.id,
+    this.title = '播放列表',
+    this.desc = false,
+    this.mediaType,
+    this.sortField = 1,
+  });
+  final String type, title;
+  final int id, sortField;
+  final int? mediaType;
+  final bool desc;
+
+  factory LanCastListSource.fromJson(Map<String, dynamic> json) {
+    if (!['archive', 'watchLater', 'fav', 'playlist'].contains(json['type']) ||
+        json['desc'] is! bool) {
+      throw const LanCastException('无效的列表来源');
+    }
+    return LanCastListSource(
+      type: json['type'] as String,
+      id: lanCastInteger(json['id'], 1, 9007199254740991),
+      title: lanCastText(json['title']),
+      desc: json['desc'] as bool,
+      mediaType: json['mediaType'] == null
+          ? null
+          : lanCastInteger(json['mediaType'], 1, 10),
+      sortField: lanCastInteger(json['sortField'], 1, 10),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'id': id,
+    'title': title,
+    'desc': desc,
+    'mediaType': mediaType,
+    'sortField': sortField,
+  };
+}
+
 class LanCastMedia {
   const LanCastMedia({
     required this.title,
@@ -48,6 +97,7 @@ class LanCastMedia {
     this.roomId,
     this.position = 0,
     this.speed = 1,
+    this.listSource,
   });
 
   final String title;
@@ -56,6 +106,7 @@ class LanCastMedia {
   final String? bvid;
   final int position;
   final double speed;
+  final LanCastListSource? listSource;
   bool get isLive => kind == 'live';
   String get key => isLive ? 'live:$roomId' : '$kind:$aid:$cid:$epId';
 
@@ -90,6 +141,11 @@ class LanCastMedia {
       roomId: id('roomId', required: kind == 'live'),
       position: lanCastNumber(json['position'], 0, 2592000000).round(),
       speed: lanCastNumber(json['speed'], 0.25, 4),
+      listSource: json['listSource'] == null
+          ? null
+          : LanCastListSource.fromJson(
+              json['listSource'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -105,6 +161,7 @@ class LanCastMedia {
     'roomId': roomId,
     'position': position,
     'speed': speed,
+    if (listSource != null) 'listSource': listSource!.toJson(),
   };
 }
 
@@ -122,6 +179,7 @@ class LanCastStatus {
     this.mediaKey = '',
     this.fullscreen = false,
     this.canFullscreen = false,
+    this.currentMedia,
     this.settings = const [],
   });
 
@@ -137,6 +195,9 @@ class LanCastStatus {
   final String mediaKey;
   final bool fullscreen;
   final bool canFullscreen;
+
+  /// Receiver-resolved identity after advancing within its normal video page.
+  final LanCastMedia? currentMedia;
   final List<LanCastSetting> settings;
 
   factory LanCastStatus.fromJson(Map<String, dynamic> json) => LanCastStatus(
@@ -152,6 +213,9 @@ class LanCastStatus {
     mediaKey: json['mediaKey'] as String? ?? '',
     fullscreen: json['fullscreen'] as bool? ?? false,
     canFullscreen: json['canFullscreen'] as bool? ?? false,
+    currentMedia: json['currentMedia'] == null
+        ? null
+        : LanCastMedia.fromJson(json['currentMedia'] as Map<String, dynamic>),
     settings: (json['settings'] as List? ?? const [])
         .map((e) => LanCastSetting.fromJson(e as Map<String, dynamic>))
         .toList(),
@@ -170,6 +234,7 @@ class LanCastStatus {
     'mediaKey': mediaKey,
     'fullscreen': fullscreen,
     'canFullscreen': canFullscreen,
+    if (currentMedia != null) 'currentMedia': currentMedia!.toJson(),
     'settings': settings.map((e) => e.toJson()).toList(),
   };
 }

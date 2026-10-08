@@ -487,21 +487,29 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
       if (videoDetailCtr.isPlayAll) {
         if (videoDetailCtr.mediaList.indexWhere((item) => item.bvid == bvid) ==
             -1) {
-          if (dimension == null && episode is EpisodeItem) {
-            dimension = episode.page?.dimension;
+          if (videoDetailCtr.plPlayerController.isReceivingCast) {
+            // Related autoplay leaves the API list but keeps the receiving page.
+            videoDetailCtr
+              ..isPlayAll = false
+              ..sourceType = SourceType.normal;
+          } else {
+            if (dimension == null && episode is EpisodeItem) {
+              dimension = episode.page?.dimension;
+            }
+            PageUtils.toVideoPage(
+              bvid: bvid,
+              cid: cid,
+              cover: cover,
+              dimension: dimension,
+              title: episode.title,
+            );
+            return false;
           }
-          PageUtils.toVideoPage(
-            bvid: bvid,
-            cid: cid,
-            cover: cover,
-            dimension: dimension,
-            title: episode.title,
-          );
-          return false;
         }
       }
 
       videoDetailCtr
+        ..plPlayerController.prepareReceivingCastEpisode('ugc:$aid:$cid:null')
         ..plPlayerController.pause()
         ..makeHeartBeat()
         ..updateMediaListHistory(aid)
@@ -509,6 +517,10 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
         ..bvid = bvid
         ..aid = aid
         ..cid.value = cid
+        ..args['title'] =
+            episode.title ??
+            (episode is Part ? episode.part : null) ??
+            'PiliPlus 视频'
         ..queryVideoUrl();
 
       if (this.bvid != bvid) {
@@ -744,6 +756,7 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
           bvid: firstItem.bvid,
           cid: firstItem.cid,
           cover: firstItem.cover,
+          title: firstItem.title,
         ),
       );
       return true;

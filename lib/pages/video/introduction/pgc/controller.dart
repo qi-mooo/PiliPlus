@@ -276,6 +276,9 @@ class PgcIntroController extends CommonIntroController {
       this.bvid = bvid;
 
       videoDetailCtr
+        ..plPlayerController.prepareReceivingCastEpisode(
+          '${videoDetailCtr.videoType.name}:$aid:$cid:$epId',
+        )
         ..plPlayerController.pause()
         ..makeHeartBeat()
         ..onReset()
@@ -283,6 +286,7 @@ class PgcIntroController extends CommonIntroController {
         ..bvid = bvid
         ..aid = aid
         ..cid.value = cid
+        ..args['title'] = episode.title ?? 'PiliPlus 视频'
         ..queryVideoUrl();
       if (cover != null && cover.isNotEmpty) {
         videoDetailCtr.cover.value = cover;

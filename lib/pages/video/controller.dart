@@ -783,6 +783,16 @@ class VideoDetailController extends GetxController
       cid: cid.value,
       autoplay: args['lanCast'] == true ? false : autoplay ?? _autoPlay.value,
       mediaTitle: args['title'] as String?,
+      listSource: isPlayAll && args['mediaId'] != null
+          ? LanCastListSource(
+              type: sourceType.name,
+              id: int.parse('${args['mediaId']}'),
+              title: watchLaterTitle,
+              desc: _mediaDesc,
+              mediaType: int.tryParse('${args['mediaType']}'),
+              sortField: int.tryParse('${args['sortField']}') ?? 1,
+            )
+          : null,
       epid: isUgc ? null : epId,
       seasonId: isUgc ? null : seasonId,
       pgcType: isUgc ? null : pgcType,

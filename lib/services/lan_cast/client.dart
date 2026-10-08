@@ -98,10 +98,17 @@ class LanCastClient {
       LanCastStatus.fromJson(await _request('/load', media.toJson()));
   Future<LanCastStatus> status() async =>
       LanCastStatus.fromJson(await _request('/status'));
-  Future<LanCastStatus> command(String action, [double? value]) async =>
-      LanCastStatus.fromJson(
-        await _request('/command', {'action': action, 'value': value}),
-      );
+  Future<LanCastStatus> command(
+    String action, [
+    double? value,
+    String? mediaKey,
+  ]) async => LanCastStatus.fromJson(
+    await _request('/command', {
+      'action': action,
+      'value': value,
+      'mediaKey': ?mediaKey,
+    }),
+  );
   Future<void> disconnect() async {
     await _request('/disconnect', {});
   }

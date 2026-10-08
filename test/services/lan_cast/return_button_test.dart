@@ -27,6 +27,49 @@ MaterialPageRoute<void> _page(String title) => MaterialPageRoute(
 
 void main() {
   testWidgets(
+    'receiver next episode follows an open controller but does not interrupt other pages',
+    (tester) async {
+      final key = GlobalKey<NavigatorState>();
+      const next = LanCastMedia(title: '下一集', aid: 1, cid: 3);
+      final session = _Session()
+        ..media = next
+        ..mediaKey = next.key;
+      var opened = 0;
+      final navigation = LanCastNavigation(
+        openVideo: (media, position, valid) async {
+          expect(valid(), isTrue);
+          expect(media.key, next.key);
+          opened++;
+          unawaited(key.currentState!.pushReplacement(_page('下一集')));
+        },
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: key,
+          navigatorObservers: [navigation],
+          home: const Scaffold(),
+        ),
+      );
+      unawaited(key.currentState!.push(_page('原视频')));
+      await tester.pumpAndSettle();
+      navigation.rememberControlRoute(_media.key);
+      final follow = navigation.followReceiver(session, _media.key);
+      await tester.pumpAndSettle();
+      await follow;
+      expect(opened, 1);
+      expect(navigation.isOnControlPage(session), isTrue);
+      unawaited(key.currentState!.push(_page('其他页面')));
+      await tester.pumpAndSettle();
+      await navigation.followReceiver(session, next.key);
+      expect(opened, 1);
+      expect(find.text('其他页面'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      navigation.dispose();
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'floating entry returns to existing route or reopens at latest progress, and disappears on disconnect',
     (tester) async {
       final key = GlobalKey<NavigatorState>();

@@ -166,8 +166,7 @@ class LanCastPageSettings {
         '播放顺序',
         (player.receivingCastRepeat ?? PlayRepeat.pause).name,
         {
-          for (final e in [PlayRepeat.pause, PlayRepeat.singleCycle])
-            e.name: e.label,
+          for (final e in PlayRepeat.values) e.name: e.label,
         },
         (v) => player.setPlayRepeat(PlayRepeat.values.byName(v)),
       );

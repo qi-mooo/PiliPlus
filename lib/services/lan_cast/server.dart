@@ -204,6 +204,10 @@ class LanCastServer {
       case '/load':
         await playback.load(LanCastMedia.fromJson(body));
       case '/command':
+        if (body['mediaKey'] != null &&
+            body['mediaKey'] != playback.status.mediaKey) {
+          throw const LanCastException('视频已切换，请等待控制页更新', 422);
+        }
         await _control(body['action'], body['value']);
       case '/settings':
         if (playback is! LanCastSettingsPlayback) {

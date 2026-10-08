@@ -272,10 +272,16 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       if (shutdownTimerService.isWaiting) {
         shutdownTimerService.handleWaiting();
       } else if (plPlayerController!.isReceivingCast) {
-        if (plPlayerController!.receivingCastRepeat == PlayRepeat.singleCycle) {
-          plPlayerController!.play(repeat: true);
+        switch (plPlayerController!.playRepeat) {
+          case PlayRepeat.singleCycle:
+            plPlayerController!.play(repeat: true);
+          case PlayRepeat.listOrder:
+          case PlayRepeat.listCycle:
+          case PlayRepeat.autoPlayRelated:
+            introController.nextPlay();
+          case PlayRepeat.pause:
         }
-        // Keep this video and the cast connection ready for the sender's choice.
+        // Keep fullscreen and the connection at the end of a non-looping list.
         return;
       } else {
         switch (plPlayerController!.playRepeat) {

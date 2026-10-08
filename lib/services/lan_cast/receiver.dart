@@ -27,8 +27,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
     final player = PlPlayerController.instance;
     return player != null &&
             identical(player, _player) &&
-            !player.isCasting &&
-            player.castMediaKey == _media?.key
+            player.isReceivingCast
         ? player
         : null;
   }
@@ -36,22 +35,31 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
   @override
   LanCastStatus get status {
     final player = _current;
+    final loading = _loading || (player?.processing ?? false);
+    // A normal episode change keeps the same receiver/player. Unrelated page
+    // navigation clears isReceivingCast and must still end the session.
+    if (player != null &&
+        !loading &&
+        player.dataStatus.value == DataStatus.loaded) {
+      _media = player.castMedia;
+    }
     return LanCastStatus(
       title: _media?.title ?? '',
-      mediaKey: player?.castMediaKey ?? '',
+      mediaKey: player == null ? '' : _media?.key ?? '',
       position: player?.positionInMilliseconds ?? 0,
       duration: player?.durationInMilliseconds ?? 0,
       playing: player?.playerStatus.isPlaying ?? false,
-      buffering: _loading || (player?.isBuffering.value ?? false),
+      buffering: loading || (player?.isBuffering.value ?? false),
       volume: ((player?.volume.value ?? 1) * 100).clamp(0, 100),
       speed: (player?.playbackSpeed ?? 1).clamp(0.25, 4),
       isLive: _media?.isLive ?? false,
       fullscreen: player?.isFullScreen.value ?? false,
       canFullscreen: true,
-      settings: player == null || _loading
+      currentMedia: player == null || loading ? null : _media,
+      settings: player == null || loading
           ? const []
           : LanCastPageSettings(player).snapshot,
-      error: _media != null && !_loading && player == null
+      error: _media != null && !loading && player == null
           ? '接收端已关闭或切换视频'
           : null,
     );
@@ -67,11 +75,12 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
     }
     await showDesktopWindow();
     final fullscreen = _current?.isFullScreen.value;
+    final repeat = _current?.receivingCastRepeat;
     _loading = true;
     _media = media;
     _player = null;
     final previous = PlPlayerController.instance;
-    previous?.receivingCastRepeat = null;
+    previous?.clearReceivingCast();
     final previousGeneration = previous?.sourceGeneration;
     final deadline = DateTime.now().add(const Duration(seconds: 35));
     try {
@@ -84,6 +93,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
           previous?.dataStatus.value == DataStatus.loaded) {
         _player = previous;
         previous!.receivingCastMediaKey = media.key;
+        previous.receivingCastRepeat = repeat;
         await previous.play();
         if (fullscreen != null) {
           await previous.triggerFullScreen(status: fullscreen);
@@ -104,7 +114,9 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
         if (player.dataStatus.value == DataStatus.error) break;
         if (player.dataStatus.value != DataStatus.loaded) continue;
         _player = player;
-        player.receivingCastMediaKey = media.key;
+        player
+          ..receivingCastMediaKey = media.key
+          ..receivingCastRepeat = repeat;
         if (!media.isLive) {
           await player.seek(Duration(milliseconds: media.position));
           await player.setPlaybackSpeed(media.speed);
@@ -125,6 +137,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
   Future<void> command(String action, double? value) async {
     final player = _current;
     if (player == null) throw const LanCastException('接收端已关闭或切换视频', 409);
+    if (player.processing) throw const LanCastException('正在切换视频，请稍后重试', 422);
     switch (action) {
       case 'play':
         await player.play();
@@ -145,6 +158,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
   Future<void> setSetting(String key, Object value) async {
     final player = _current;
     if (player == null) throw const LanCastException('接收端已关闭或切换视频', 409);
+    if (player.processing) throw const LanCastException('正在切换视频，请稍后重试', 422);
     _loading = true;
     try {
       await LanCastPageSettings(player).apply(key, value);
@@ -156,8 +170,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
   @override
   Future<void> stop() async {
     final player = _current;
-    _player?.receivingCastMediaKey = null;
-    _player?.receivingCastRepeat = null;
+    _player?.clearReceivingCast();
     await player?.pause();
     await _player?.restoreCastWindowTopmost();
     _media = null;

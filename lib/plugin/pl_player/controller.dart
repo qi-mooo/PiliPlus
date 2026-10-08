@@ -87,11 +87,38 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   final RxString castDevice = ''.obs;
   bool get isCasting => _castSession != null;
   String? receivingCastMediaKey;
+  String? _receivingCastNextMediaKey;
   PlayRepeat? receivingCastRepeat;
   bool get isReceivingCast =>
       !isCasting && receivingCastMediaKey == castMediaKey;
+
+  /// Only normal-page episode changes may carry the receiving session forward.
+  void prepareReceivingCastEpisode(String nextKey) {
+    if (isReceivingCast) _receivingCastNextMediaKey = nextKey;
+  }
+
+  void clearReceivingCast() {
+    receivingCastMediaKey = null;
+    _receivingCastNextMediaKey = null;
+    receivingCastRepeat = null;
+  }
+
+  /// Returns whether an explicitly selected episode retains receiver ownership.
+  bool updateReceivingCastSource(String incomingKey, {required bool network}) {
+    if (network &&
+        isReceivingCast &&
+        _receivingCastNextMediaKey == incomingKey) {
+      receivingCastMediaKey = incomingKey;
+    }
+    _receivingCastNextMediaKey = null;
+    if (network && receivingCastMediaKey == incomingKey) return true;
+    clearReceivingCast();
+    return false;
+  }
+
   int? liveRoomId;
   String mediaTitle = 'PiliPlus 视频';
+  LanCastListSource? castListSource;
   int sourceGeneration = 0;
   double? _localVolume;
   String? playbackPageTag;
@@ -154,6 +181,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       roomId: liveRoomId,
       position: positionInMilliseconds,
       speed: playbackSpeed.clamp(0.25, 4),
+      listSource: castListSource,
     ).toJson(),
   );
 
@@ -184,6 +212,18 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       final error = session.error;
       _detachCast();
       if (error != null) SmartDialog.showToast(error);
+      return;
+    }
+    if (session.mediaKey != castMediaKey &&
+        session.status.currentMedia?.key == session.mediaKey &&
+        session.mediaKey != null) {
+      final previousKey = castMediaKey;
+      _detachCast(restorePosition: false);
+      LanCastNavigation.instance
+          .followReceiver(session, previousKey)
+          .catchError((Object e) {
+            SmartDialog.showToast('更新投屏控制页失败：$e');
+          });
       return;
     }
     castDevice.value = session.online
@@ -711,8 +751,18 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   // 播放顺序相关
   late PlayRepeat _playRepeat = Pref.playRepeat;
-  PlayRepeat get playRepeat =>
-      isReceivingCast ? receivingCastRepeat ?? PlayRepeat.pause : _playRepeat;
+  PlayRepeat get playRepeat => isReceivingCast
+      ? receivingCastRepeat ?? PlayRepeat.pause
+      : isCasting
+      ? PlayRepeat.values
+                .where(
+                  (e) =>
+                      e.name ==
+                      playbackSetting('repeat', PlayRepeat.pause.name),
+                )
+                .firstOrNull ??
+            PlayRepeat.pause
+      : _playRepeat;
 
   TextStyle get subTitleStyle => TextStyle(
     height: 1.5,
@@ -1031,6 +1081,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     int? pgcType,
     int? liveRoomId,
     String? mediaTitle,
+    LanCastListSource? listSource,
     VideoType? videoType,
     VoidCallback? onInit,
     Volume? volume,
@@ -1039,9 +1090,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     final incomingKey = isLive
         ? 'live:$liveRoomId'
         : '${(videoType ?? VideoType.ugc).name}:$aid:$cid:$epid';
-    if (dataSource is! NetworkSource || receivingCastMediaKey != incomingKey) {
+    if (!updateReceivingCastSource(
+      incomingKey,
+      network: dataSource is NetworkSource,
+    )) {
       if (_castWindowWasOnTop != null) await restoreCastWindowTopmost();
-      receivingCastMediaKey = null;
     }
     final session = _castSession ?? LanCastSession.instance;
     if (isCasting) {
@@ -1062,6 +1115,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       this.isLive = isLive;
       this.liveRoomId = liveRoomId;
       if (mediaTitle != null) this.mediaTitle = mediaTitle;
+      castListSource = listSource;
       _videoType = videoType ?? VideoType.ugc;
       _videoQualityCode = videoQualityCode;
       this.width = width;

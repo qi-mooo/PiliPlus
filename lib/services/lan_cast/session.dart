@@ -30,6 +30,25 @@ class LanCastSession extends ChangeNotifier {
   Future<void> _commands = Future.value();
   bool get connected => _client != null;
 
+  bool _acceptReceiverMedia(LanCastStatus state) {
+    final current = state.currentMedia;
+    if (_loadFailed ||
+        state.error != null ||
+        current == null ||
+        current.key != state.mediaKey) {
+      return false;
+    }
+    if (mediaKey != current.key) {
+      // Discard gestures/settings queued for the episode that just finished.
+      _loadRevision++;
+      _generation++;
+      media = current;
+      mediaKey = current.key;
+    }
+    status = state;
+    return true;
+  }
+
   Future<void> connect(
     LanCastDevice target,
     String? code,
@@ -160,7 +179,9 @@ class LanCastSession extends ChangeNotifier {
       online = true;
       error = state.error;
       if (state.mediaKey != mediaKey || state.error != null) {
-        if (_loadFailed) {
+        if (_acceptReceiverMedia(state)) {
+          error = null;
+        } else if (_loadFailed) {
           online = false;
           error ??= '接收端未打开视频，请重试推送';
         } else {
@@ -186,7 +207,8 @@ class LanCastSession extends ChangeNotifier {
 
   // Queue gestures, including long-press speed restore and seek followed by play.
   Future<void> command(String action, [double? value]) {
-    return _sendControl((client) => client.command(action, value));
+    final keyAtSend = mediaKey;
+    return _sendControl((client) => client.command(action, value, keyAtSend));
   }
 
   Future<void> setSetting(String key, Object value) {
@@ -210,7 +232,7 @@ class LanCastSession extends ChangeNotifier {
       try {
         final state = await send(client);
         if (_client != client || revision != _loadRevision) return;
-        status = state;
+        if (!_acceptReceiverMedia(state)) status = state;
         online = true;
         error = null;
       } catch (e) {
