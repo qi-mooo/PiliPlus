@@ -1,10 +1,9 @@
 import 'dart:async';
 
 import 'package:PiliPlus/models/common/super_resolution_type.dart';
-import 'package:PiliPlus/models/common/video/audio_quality.dart';
+import 'package:PiliPlus/models/common/video/base_quality.dart';
 import 'package:PiliPlus/models/common/video/cdn_type.dart';
 import 'package:PiliPlus/models/common/video/video_decode_type.dart';
-import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/pages/live_room/controller.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
@@ -262,9 +261,9 @@ class LanCastPageSettings {
       }
     }
     if (live != null) {
-      choice('quality', '选择画质', '${live.currentQn}', {
+      choice('quality', '选择画质', '${live.currentQn.value?.code}', {
         for (final e in live.acceptQnList) '${e.code}': e.desc,
-      }, (v) async => await live.changeQn(int.parse(v)));
+      }, (v) async => await live.changeQn(LiveQuality.fromCode(int.parse(v))));
       final routes = <String, String>{};
       for (var s = 0; s < live.stream.length; s++) {
         final stream = live.stream[s];

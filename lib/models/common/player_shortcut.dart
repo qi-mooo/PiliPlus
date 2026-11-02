@@ -86,8 +86,14 @@ enum PlayerShortcutAction {
       nextEpisode => [
         PlayerShortcutBinding(LogicalKeyboardKey.bracketRight.keyId),
       ],
-      speedDown => [PlayerShortcutBinding(LogicalKeyboardKey.minus.keyId)],
-      speedUp => [PlayerShortcutBinding(LogicalKeyboardKey.equal.keyId)],
+      speedDown => [
+        PlayerShortcutBinding(LogicalKeyboardKey.minus.keyId),
+        PlayerShortcutBinding(LogicalKeyboardKey.comma.keyId),
+      ],
+      speedUp => [
+        PlayerShortcutBinding(LogicalKeyboardKey.equal.keyId),
+        PlayerShortcutBinding(LogicalKeyboardKey.period.keyId),
+      ],
       toggleControls => [PlayerShortcutBinding(LogicalKeyboardKey.keyC.keyId)],
       back => [PlayerShortcutBinding(LogicalKeyboardKey.escape.keyId)],
       search => [

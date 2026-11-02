@@ -177,10 +177,23 @@ class PlayerFocus extends StatelessWidget {
         return true;
 
       case PlayerShortcutAction.seekBackward:
-        if (!plPlayerController.isLive && event is KeyDownEvent && hasPlayer) {
-          plPlayerController.onBackward(
-            plPlayerController.fastForBackwardDuration,
-          );
+        if (plPlayerController.isLive) {
+          return true;
+        }
+        if (event is KeyDownEvent) {
+          if (hasPlayer) {
+            plPlayerController
+              ..longPressTimer?.cancel()
+              ..longPressTimer = Timer.periodic(
+                const Duration(milliseconds: 200),
+                plPlayerController.multiBackwardStart,
+              );
+          }
+        } else if (event is KeyUpEvent) {
+          plPlayerController.cancelLongPressTimer();
+          if (hasPlayer) {
+            plPlayerController.multiBackwardEnd();
+          }
         }
         return true;
 
@@ -197,7 +210,10 @@ class PlayerFocus extends StatelessWidget {
 
       case PlayerShortcutAction.speedDown:
       case PlayerShortcutAction.speedUp:
-        if (!plPlayerController.isLive && event is KeyDownEvent && hasPlayer) {
+        if (!plPlayerController.isLive &&
+            event is KeyDownEvent &&
+            hasPlayer &&
+            !plPlayerController.longPressStatus.value) {
           _setAdjacentSpeed(isIncrease: action == PlayerShortcutAction.speedUp);
         }
         return true;

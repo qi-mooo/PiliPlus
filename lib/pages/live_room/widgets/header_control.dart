@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/draggable_sheet/dyn.dart';
 import 'package:PiliPlus/common/widgets/marquee.dart';
-import 'package:PiliPlus/models/common/video/live_quality.dart';
 import 'package:PiliPlus/pages/lan_cast/launch.dart';
 import 'package:PiliPlus/pages/lan_cast/settings_sheet.dart';
 import 'package:PiliPlus/pages/live_room/controller.dart';
@@ -15,7 +14,7 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/common_btn.dart';
 import 'package:PiliPlus/services/shutdown_timer_service.dart'
     show shutdownTimerService;
-import 'package:PiliPlus/utils/android/bindings.g.dart';
+import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
@@ -176,8 +175,8 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
               ),
               onTap: widget.onSendDanmaku,
             ),
-          if (Platform.isAndroid ||
-              IOSPipHelper.isAvailable ||
+          if ((Platform.isAndroid && PiliAndroidHelper.isPipAvailable) ||
+              (Platform.isIOS && IOSPipHelper.isAvailable) ||
               (PlatformUtils.isDesktop && !isFullScreen))
             ComBtn(
               height: btnHeight,
@@ -185,9 +184,7 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
               onTap: () {
                 if (PlatformUtils.isDesktop) {
                   plPlayerController.toggleDesktopPip();
-                  return;
-                }
-                if (Platform.isIOS || AndroidHelper.isPipAvailable) {
+                } else {
                   plPlayerController.enterPip();
                 }
               },
@@ -452,7 +449,7 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
                                 iconColor: codecColor,
                                 collapsedIconColor: codecColor,
                                 title: Text(
-                                  '${codec.codecName ?? ci.toString()} (${LiveQuality.fromCode(codec.currentQn)?.desc ?? codec.currentQn})',
+                                  '${codec.codecName ?? ci.toString()} (${codec.currentQn.desc})',
                                   style: isCurrCodec
                                       ? currStyle
                                       : const TextStyle(fontSize: 14),

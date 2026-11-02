@@ -1,3 +1,4 @@
+import 'package:PiliPlus/models/common/pgc_episode_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/common/video/source_type.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/episode.dart' as pgc;
@@ -52,7 +53,10 @@ class _Pgc extends PgcIntroController {
   @override
   VideoDetailController get videoDetailCtr => video;
   @override
-  Future<bool> onChangeEpisode(BaseEpisodeItem episode) async {
+  Future<bool> onChangeEpisode(
+    BaseEpisodeItem episode, {
+    PgcEpisodeType? episodeType,
+  }) async {
     selected.add(episode);
     video.cid.value = episode.cid!;
     return true;
@@ -113,10 +117,7 @@ void main() {
     player
       ..receivingCastMediaKey = player.castMediaKey
       ..receivingCastRepeat = PlayRepeat.autoPlayRelated;
-    final intro = _ChangingUgc(video)
-      ..bvid = video.bvid
-      ..cid = 10.obs
-      ..hasLater = false.obs;
+    final intro = _ChangingUgc(video)..hasLater = false.obs;
     expect(
       await intro.onChangeEpisode(
         BaseEpisodeItem(
@@ -142,10 +143,12 @@ void main() {
   test(
     'receiver uses its own part order and loops only when selected',
     () async {
-      final video = VideoDetailController()..isPlayAll = false;
+      final video = VideoDetailController()
+        ..isPlayAll = false
+        ..cid = 10.obs;
       final player = video.plPlayerController;
       player.receivingCastMediaKey = player.castMediaKey;
-      final intro = _Ugc(video)..cid = 10.obs;
+      final intro = _Ugc(video);
       intro.videoDetail.value.pages = [Part(cid: 10), Part(cid: 20)];
       final settings = LanCastPageSettings(player);
       await settings.apply('repeat', 'listOrder');
@@ -170,7 +173,8 @@ void main() {
       player.receivingCastMediaKey = player.castMediaKey;
       final settings = LanCastPageSettings(player);
       await settings.apply('repeat', 'listCycle');
-      final ugc = _Ugc(video)..cid = 20.obs;
+      video.cid.value = 20;
+      final ugc = _Ugc(video);
       ugc.videoDetail.value.ugcSeason = UgcSeason(
         sections: [
           SectionItem(episodes: [EpisodeItem(cid: 10), EpisodeItem(cid: 20)]),
