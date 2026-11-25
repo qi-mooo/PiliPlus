@@ -153,5 +153,5 @@ dist
 test*
 
 # Keep regression tests in version control.
-!test/
-!test/**
+!/test/
+!/test/**

@@ -1,3 +1,4 @@
+import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/pages/lan_cast/fullscreen_button.dart';
 import 'package:PiliPlus/pages/lan_cast/settings_sheet.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
@@ -11,7 +12,9 @@ import 'package:PiliPlus/services/lan_cast/page_settings.dart';
 import 'package:PiliPlus/services/lan_cast/protocol.dart';
 import 'package:PiliPlus/services/lan_cast/session.dart';
 import 'package:PiliPlus/services/lan_cast/settings.dart';
+import 'package:PiliPlus/utils/accounts/account.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -90,10 +93,26 @@ class _Settings extends Fake implements Box<dynamic> {
 }
 
 void main() {
-  setUpAll(() {
+  setUpAll(() async {
     GStorage.setting = _Settings();
     GStorage.video = _Settings();
     GStorage.localCache = _Settings();
+    Request();
+    Request.dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response(
+            requestOptions: options,
+            data: {
+              'code': 0,
+              'data': {'b_3': 'test-buvid3', 'b_4': 'test-buvid4'},
+            },
+          ),
+        ),
+      ),
+    );
+    // Initialize anonymous credentials before entering the widget fake clock.
+    await AnonymousAccount().delete();
   });
 
   testWidgets(

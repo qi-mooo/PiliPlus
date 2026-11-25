@@ -118,7 +118,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
           ..receivingCastMediaKey = media.key
           ..receivingCastRepeat = repeat;
         if (!media.isLive) {
-          await player.seek(Duration(milliseconds: media.position));
+          await player.seekTo(Duration(milliseconds: media.position));
           await player.setPlaybackSpeed(media.speed);
         }
         await player.play();
@@ -144,7 +144,7 @@ class LanCastPagePlayback implements LanCastPlayback, LanCastSettingsPlayback {
       case 'pause':
         await player.pause();
       case 'seek':
-        await player.seek(Duration(milliseconds: value!.round()));
+        await player.seekTo(Duration(milliseconds: value!.round()));
       case 'volume':
         await player.setVolume(value! / 100);
       case 'speed':

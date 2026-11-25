@@ -288,6 +288,12 @@ List<SettingsModel> get playSettings => [
     leading: const Icon(Icons.keyboard_command_key_outlined),
     onTap: (_, _) => Get.toNamed('/playerShortcutSetting'),
   ),
+  const SwitchModel(
+    title: '自动佩戴直播间粉丝牌',
+    leading: Icon(MdiIcons.medalOutline),
+    setKey: SettingBoxKey.autoWearMedal,
+    defaultVal: false,
+  ),
   PopupModel(
     title: 'SuperChat (醒目留言) 显示类型',
     leading: const Icon(Icons.live_tv),

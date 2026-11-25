@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
 import 'package:PiliPlus/services/lan_cast/permission.dart';
+import 'package:PiliPlus/utils/dlna_utils.dart';
 import 'package:dlna_dart/dlna.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -111,6 +112,7 @@ class _DLNADeviceListState extends State<DLNADeviceList> {
       final url = await widget.mediaUrl();
       if (!mounted) return;
       if (_lastDevice != null) await _lastDevice!.pause();
+      normalizeLegacyDlnaControlUrls(device);
       await device.setUrl(url, title: widget.title);
       await device.play();
       _lastDevice = device;

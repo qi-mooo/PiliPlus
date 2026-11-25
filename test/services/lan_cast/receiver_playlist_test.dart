@@ -184,6 +184,7 @@ void main() {
       expect(ugc.selected.single.cid, 10);
 
       final intro = _Pgc(video)
+        ..episodeType = PgcEpisodeType.episode
         ..pgcItem = PgcInfoModel(
           episodes: [pgc.EpisodeItem(cid: 10), pgc.EpisodeItem(cid: 20)],
         );
